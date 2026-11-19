@@ -399,11 +399,13 @@ Apple Silicon 上 7.17 自带的 JDK 与机器学习原生组件是 x86_64，需
 
 商家发布商品时按内容类型分流存储，读取时再组装，兼顾事务一致性与高并发读：
 
-- **写入**：基础信息（名称、价格、库存等）与**详情 HTML** 写入 MySQL `products` 表（`detail_html` 列）；**商品参数**（键值对）同时写入 MySQL `params_json` 列（事务内持久副本）与 **MongoDB** `product_params` 集合（以商品 id 为 `_id` 的读优化文档）；**图片**上传到 **MinIO**（S3/OSS 兼容对象存储），URL 仍为 `/media/<sha256>.<ext>`。
+- **写入**：基础信息（名称、价格、库存等）与**详情 HTML** 写入 MySQL `products` 表（`detail_html` 列）；**商品参数**（键值对）在同一事务中写入 MySQL `params_json` 列，提交后再尽力镜像到 **MongoDB** `product_params` 集合（文档包含商品 `_id`、`params` 和 SQL 商品 `version`）。MongoDB 按版本原子更新，延迟到达的旧写入不能覆盖新版本；**图片**上传到 **MinIO**（S3/OSS 兼容对象存储），URL 仍为 `/media/<sha256>.<ext>`。
 - **同步**：商品写入触发事务 outbox → RabbitMQ → 消费者，把名称、短介绍、描述、详情 HTML 的纯文本（`detail_text`）与参数文本（`params_text`）一并批量写入 Elasticsearch；搜索关键词可命中参数与详情内容。
-- **读取**：搜索打 ES；详情页由后端组装 MySQL 基础信息 + `detail_html` 与 MongoDB 参数，结果放入既有 Redis `product` 缓存（商品/店铺写入触发器推进版本自动失效）。
+- **读取与一致性**：MySQL `params_json` 是参数的权威来源。详情读取与 ES 批量索引共用一致性校验：发现 MongoDB 文档缺失、版本落后、参数不符或旧文档无版本时，返回当前 SQL 快照的参数并尝试读修复；参数清空也会同步。旧 SQL 快照不会覆盖较新的 MongoDB 文档。详情组装结果放入既有 Redis `product` 缓存（商品/店铺写入触发器推进版本自动失效）。
 - **安全**：详情 HTML 经 `app/html_sanitize.py` 白名单过滤（仅保留段落、列表、表格、图片等展示标签，丢弃 script/iframe/事件属性，图片 src 仅限 `/media/` 对象键），写入时即净化，前端直接渲染净化后的 HTML。
-- **降级**：MongoDB 未配置或不可达时，参数回退读取 MySQL `params_json`；MinIO 未配置或不可达时，图片回退本地 `uploads/` 目录。两者故障都不影响发布与详情读取，恢复后自动切回。MongoDB 库名按数据库路径哈希隔离（`heima_params_<hash>`），测试互不污染。
+- **降级**：MongoDB 未配置、不可达或修复失败时，仍返回 SQL 参数；故障期间提交的参数不会因 MongoDB 恢复而回退，后续未命中缓存的详情读取或索引同步会重试修复（没有独立后台参数同步任务，未被访问的文档不会立即补齐）。MinIO 未配置或不可达时，图片回退本地 `uploads/` 目录。MongoDB 库名按数据库路径哈希隔离（`heima_params_<hash>`），测试互不污染。
+
+MongoDB 一致性回归测试：`.venv/bin/python -m pytest tests/test_mongodb.py -q`。启用真实 MongoDB 原子写入和并发验证：`MONGODB_TESTS=1 .venv/bin/python -m pytest tests/test_mongodb.py -q`，默认连接 `mongodb://127.0.0.1:27017`，可用 `MONGODB_TEST_URL` 覆盖；每个测试创建随机临时库并在结束后删除，不改动商城数据库。
 
 依赖见 `requirements.txt` 的 `motor`、`minio`。本地可用 `brew install minio` 启动 MinIO（默认 `minioadmin/minioadmin`，端口 9000）；MongoDB 可用官方发行包启动 `mongod --bind_ip 127.0.0.1 --port 27017`。
 

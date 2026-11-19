@@ -4,6 +4,8 @@ MySQL stays the transactional source of truth (products.params_json); MongoDB is
 the read-optimized parameter document store keyed by integer product id. When
 MONGODB_URL is unset or the server is unreachable, callers transparently fall
 back to the MySQL params_json column so publishing and detail reads never fail.
+Reads validate the replica against the SQL snapshot and repair drift; versioned
+atomic writes prevent a delayed mirror or repair from replacing a newer document.
 The database name is namespaced per catalog database to isolate test runs.
 """
 import asyncio
@@ -42,19 +44,30 @@ class ProductParams:
         self.client = motor.AsyncIOMotorClient(url, serverSelectionTimeoutMS=1500, connectTimeoutMS=1500)
         self.collection = self.client[database]['product_params']
 
-    async def get_many(self, product_ids):
+    async def get_documents(self, product_ids):
         if not product_ids:
             return {}
-        cursor = self.collection.find({'_id': {'$in': list(product_ids)}})
-        return {doc['_id']: doc.get('params', []) async for doc in cursor}
+        cursor = self.collection.find({'_id': {'$in': list(product_ids)}}, {'params': 1, 'version': 1})
+        return {doc['_id']: doc async for doc in cursor}
 
-    async def set(self, product_id, params):
-        await self.collection.replace_one({'_id': product_id}, {'_id': product_id, 'params': params}, upsert=True)
+    async def get_many(self, product_ids):
+        return {key: doc.get('params', []) for key, doc in (await self.get_documents(product_ids)).items()}
+
+    async def set(self, product_id, params, version):
+        # Match only _id: a version predicate with upsert would try to insert a
+        # duplicate _id when a newer document already exists. Compare and update
+        # inside one atomic operation instead; legacy/malformed versions migrate.
+        stored_version = {'$cond': [{'$in': [{'$type': '$version'}, ['int', 'long']]}, '$version', -1]}
+        can_update = {'$lte': [stored_version, version]}
+        await self.collection.update_one({'_id': product_id}, [{'$set': {
+            'params': {'$cond': [can_update, {'$literal': params}, '$params']},
+            'version': {'$cond': [can_update, version, '$version']},
+        }}], upsert=True)
 
     async def delete(self, product_id):
         await self.collection.delete_one({'_id': product_id})
 
-    async def close(self):
+    def close(self):
         self.client.close()
 
 
@@ -97,25 +110,49 @@ def _trip():
     _disabled_until = now + 5
 
 
-async def read_params(row, database_path):
-    """MongoDB first, MySQL params_json fallback."""
-    instance = store(database_path)
-    if instance is not None:
+async def read_many_params(rows, database_path):
+    """Use the SQL snapshot as authority; best-effort repair of the Mongo replica."""
+    rows = [dict(row) for row in rows]
+    params = {row['id']: parse_params(row.get('params_json')) for row in rows}
+    if not rows:
+        return params
+    instance = store(database_path) if database_path is not None else None
+    if instance is None:
+        return params
+    try:
+        found = await instance.get_documents(list(params))
+    except Exception:
+        _trip()
+        return params
+    for row in rows:
+        product_id, version = row['id'], row.get('version', 0)
+        doc = found.get(product_id)
+        if doc is not None:
+            replica_version = doc.get('version')
+            # The SQL read may precede a concurrent commit. Return its consistent
+            # snapshot, but do not use it to downgrade a newer Mongo document.
+            if isinstance(replica_version, int) and not isinstance(replica_version, bool) and replica_version > version:
+                continue
+            if replica_version == version and doc.get('params') == params[product_id]:
+                continue
         try:
-            found = await instance.get_many([row['id']])
-            if row['id'] in found:
-                return found[row['id']]
+            await instance.set(product_id, params[product_id], version)
         except Exception:
             _trip()
-    return parse_params(row.get('params_json'))
+            break
+    return params
 
 
-async def write_params(product_id, params, database_path):
+async def read_params(row, database_path):
+    return (await read_many_params([row], database_path))[row['id']]
+
+
+async def write_params(product_id, params, database_path, version):
     instance = store(database_path)
     if instance is None:
         return False
     try:
-        await instance.set(product_id, params)
+        await instance.set(product_id, params, version)
         return True
     except Exception:
         _trip()

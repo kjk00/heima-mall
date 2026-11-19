@@ -243,7 +243,7 @@ async def admin_create_product(payload, user, request, connection):
         result = (await connection.execute(f"INSERT INTO products ({','.join(PRODUCT_COLUMNS)}) VALUES ({','.join('?' for _ in PRODUCT_COLUMNS)})",
                                     [values[column] for column in PRODUCT_COLUMNS]))
         product_id = result.lastrowid
-    await mirror_params(product_id, values['params'], connection)
+    await mirror_params(product_id, connection)
     return (await admin_product(product_id, user, connection))
 
 
@@ -261,17 +261,19 @@ async def admin_update_product(product_id, payload, user, request, connection):
                                     [values[column] for column in PRODUCT_COLUMNS] + [product_id, payload.version]))
         if result.rowcount != 1:
             raise MallError(409, '商品或库存已发生变化，请重新打开编辑窗口后保存')
-    await mirror_params(product_id, values['params'], connection)
+    await mirror_params(product_id, connection)
     return (await admin_product(product_id, user, connection))
 
 
-async def mirror_params(product_id, params, connection):
-    """Mirror the durable MySQL params_json into the MongoDB read store (best effort)."""
+async def mirror_params(product_id, connection):
+    """Mirror a committed SQL snapshot, including its version (best effort)."""
     path = getattr(connection, 'path', None)
     if path is None:
         return
     from app import mongodb
-    await mongodb.write_params(product_id, params, path)
+    row = (await connection.execute('SELECT id,params_json,version FROM products WHERE id=?', (product_id,))).fetchone()
+    if row is not None:
+        await mongodb.write_params(product_id, mongodb.parse_params(row['params_json']), path, row['version'])
 
 
 async def admin_product_status(product_id, payload, user, connection):

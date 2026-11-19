@@ -32,18 +32,9 @@ def settings():
 
 
 async def params_for_rows(rows, path):
-    """Batch-read MongoDB params for indexing; fall back to durable MySQL params_json."""
+    """Index parameters consistent with each SQL row, repairing MongoDB drift."""
     from app import mongodb
-    fallback = {row['id']: mongodb.parse_params(dict(row).get('params_json')) for row in rows}
-    instance = mongodb.store(path) if path is not None else None
-    if instance is None:
-        return fallback
-    try:
-        found = await instance.get_many([row['id'] for row in rows])
-    except Exception:
-        mongodb._trip()
-        return fallback
-    return {row['id']: found.get(row['id'], fallback[row['id']]) for row in rows}
+    return await mongodb.read_many_params(rows, path)
 
 
 async def fetch_documents(connection, product_ids):
