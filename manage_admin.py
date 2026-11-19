@@ -12,6 +12,19 @@ from app.security import hash_password
 ROOT = Path(__file__).resolve().parent
 
 
+def credential_output_path(output):
+    output = Path(output).expanduser().absolute()
+    resolved = output.resolve()
+    repository = ROOT.resolve()
+    private = repository / 'data' / 'private'
+    if resolved.is_relative_to(repository) and not resolved.is_relative_to(private):
+        raise ValueError('仓库内的登录信息只能保存在data/private/，或用--output指定仓库外的文件')
+    output.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if resolved.is_relative_to(private):
+        private.chmod(0o700)
+    return output
+
+
 def assign_admin(connection, phone, store_id=None, super_admin=False):
     if not re.fullmatch(r'1[3-9]\d{9}', phone):
         raise ValueError('请输入有效的账号手机号')
@@ -34,8 +47,7 @@ def generate_store_admins(connection, output):
     if not stores:
         return 0
     random.SystemRandom().shuffle(stores)
-    output = Path(output)
-    output.parent.mkdir(parents=True, exist_ok=True)
+    output = credential_output_path(output)
     # Do not replace an earlier credential file or make the credentials world readable.
     descriptor = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
@@ -72,7 +84,8 @@ def main():
     actions.add_argument('--super-admin', action='store_true', help='设置为终端管理员，可管理全部店铺')
     actions.add_argument('--store-id', type=int, help='设置为只管理指定店铺的管理员')
     actions.add_argument('--generate-store-admins', action='store_true', help='为尚无管理员的店铺随机生成账号')
-    parser.add_argument('--output', type=Path, default=ROOT / 'data/store-admin-accounts.md')
+    parser.add_argument('--output', type=Path, default=ROOT / 'data/private/store-admin-accounts.md',
+                        help='登录信息文件；仓库内仅允许data/private/，也可指定仓库外的新文件')
     arguments = parser.parse_args()
     if not arguments.generate_store_admins and not arguments.phone:
         parser.error('设置权限时必须指定 --phone')

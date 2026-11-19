@@ -4,6 +4,24 @@ __pycache__/
 *.py[cod]
 data/*.db*
 .env
+.env.*
+!.env.example
+# Local credentials must never be committed. Keep the legacy path ignored too.
+/data/private/
+/data/store-admin-accounts*.md
+/mima.txt
+/.mima.txt.swp
+# Machine-specific diagnostics may contain connection details or private paths.
+.coverage
+.coverage.*
+/reports/mysql-connection-history.jsonl
+/reports/mysql-connection-recheck.json
+/reports/async-enterprise-quality-results.json
+/reports/blackbox-whitebox-test-report.md
+/reports/enterprise-acceptance.log
+/reports/enterprise-coverage-summary.txt
+/reports/enterprise-quality-results.json
+/reports/frontend-stress.html
 .DS_Store
 backups/
 docker-data/
