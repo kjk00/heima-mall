@@ -1,0 +1,31 @@
+test_canceled_builder_releases_locks_for_the_next_request (tests.test_async.AsyncControlTests.test_canceled_builder_releases_locks_for_the_next_request) ... ok
+test_chunked_body_limits_prevent_unbounded_allocation (tests.test_async.AsyncControlTests.test_chunked_body_limits_prevent_unbounded_allocation) ... ok
+test_guard_replays_valid_stream_and_rejects_bad_json (tests.test_async.AsyncControlTests.test_guard_replays_valid_stream_and_rejects_bad_json) ... ok
+test_hot_key_coalesces_concurrent_builders_across_instances (tests.test_async.AsyncControlTests.test_hot_key_coalesces_concurrent_builders_across_instances) ... ok
+test_outage_and_recovery_do_not_reuse_old_database_version (tests.test_async.AsyncControlTests.test_outage_and_recovery_do_not_reuse_old_database_version) ... 异步Redis缓存不可用，已回源数据库
+ok
+test_query_field_limit_applies_to_asgi (tests.test_async.AsyncControlTests.test_query_field_limit_applies_to_asgi) ... ok
+test_raw_numbers_reject_coercion_before_fastapi (tests.test_async.AsyncControlTests.test_raw_numbers_reject_coercion_before_fastapi) ... ok
+test_slow_password_hash_does_not_block_event_loop (tests.test_async.AsyncControlTests.test_slow_password_hash_does_not_block_event_loop) ... ok
+test_transaction_cancellation_rolls_back (tests.test_async.AsyncControlTests.test_transaction_cancellation_rolls_back) ... ok
+test_admin_cancel_competes_with_payment_without_double_stock (tests.test_async.AsyncORMTests.test_admin_cancel_competes_with_payment_without_double_stock) ... skipped '异步ORM/ASGI依赖未安装；事件循环与缓存控制测试仍可执行'
+test_async_order_payment_cancel_and_fingerprint (tests.test_async.AsyncORMTests.test_async_order_payment_cancel_and_fingerprint) ... skipped '异步ORM/ASGI依赖未安装；事件循环与缓存控制测试仍可执行'
+test_concurrent_buyers_cannot_oversell_one_item (tests.test_async.AsyncORMTests.test_concurrent_buyers_cannot_oversell_one_item) ... skipped '异步ORM/ASGI依赖未安装；事件循环与缓存控制测试仍可执行'
+test_every_api_endpoint_is_a_coroutine (tests.test_async.AsyncORMTests.test_every_api_endpoint_is_a_coroutine) ... skipped '异步ORM/ASGI依赖未安装；事件循环与缓存控制测试仍可执行'
+test_feature_routes_save_address_and_apply_coupon (tests.test_async.AsyncORMTests.test_feature_routes_save_address_and_apply_coupon) ... skipped '异步ORM/ASGI依赖未安装；事件循环与缓存控制测试仍可执行'
+test_raw_json_rejections_are_enforced_by_asgi_and_have_headers (tests.test_async.AsyncORMTests.test_raw_json_rejections_are_enforced_by_asgi_and_have_headers) ... skipped '异步ORM/ASGI依赖未安装；事件循环与缓存控制测试仍可执行'
+test_real_async_transaction_cancel_restores_inventory (tests.test_async.AsyncORMTests.test_real_async_transaction_cancel_restores_inventory) ... skipped '异步ORM/ASGI依赖未安装；事件循环与缓存控制测试仍可执行'
+test_transaction_timeout_rolls_back_inventory (tests.test_async.AsyncORMTests.test_transaction_timeout_rolls_back_inventory) ... skipped '异步ORM/ASGI依赖未安装；事件循环与缓存控制测试仍可执行'
+test_admin_cancel_competes_with_payment_without_double_stock (tests.test_async.MySQLAsyncORMTests.test_admin_cancel_competes_with_payment_without_double_stock) ... skipped '真实MySQL异步集成需要依赖、可连接本地服务及MYSQL_ASYNC_TESTS=1'
+test_async_order_payment_cancel_and_fingerprint (tests.test_async.MySQLAsyncORMTests.test_async_order_payment_cancel_and_fingerprint) ... skipped '真实MySQL异步集成需要依赖、可连接本地服务及MYSQL_ASYNC_TESTS=1'
+test_concurrent_buyers_cannot_oversell_one_item (tests.test_async.MySQLAsyncORMTests.test_concurrent_buyers_cannot_oversell_one_item) ... skipped '真实MySQL异步集成需要依赖、可连接本地服务及MYSQL_ASYNC_TESTS=1'
+test_every_api_endpoint_is_a_coroutine (tests.test_async.MySQLAsyncORMTests.test_every_api_endpoint_is_a_coroutine) ... skipped '真实MySQL异步集成需要依赖、可连接本地服务及MYSQL_ASYNC_TESTS=1'
+test_feature_routes_save_address_and_apply_coupon (tests.test_async.MySQLAsyncORMTests.test_feature_routes_save_address_and_apply_coupon) ... skipped '真实MySQL异步集成需要依赖、可连接本地服务及MYSQL_ASYNC_TESTS=1'
+test_raw_json_rejections_are_enforced_by_asgi_and_have_headers (tests.test_async.MySQLAsyncORMTests.test_raw_json_rejections_are_enforced_by_asgi_and_have_headers) ... skipped '真实MySQL异步集成需要依赖、可连接本地服务及MYSQL_ASYNC_TESTS=1'
+test_real_async_transaction_cancel_restores_inventory (tests.test_async.MySQLAsyncORMTests.test_real_async_transaction_cancel_restores_inventory) ... skipped '真实MySQL异步集成需要依赖、可连接本地服务及MYSQL_ASYNC_TESTS=1'
+test_transaction_timeout_rolls_back_inventory (tests.test_async.MySQLAsyncORMTests.test_transaction_timeout_rolls_back_inventory) ... skipped '真实MySQL异步集成需要依赖、可连接本地服务及MYSQL_ASYNC_TESTS=1'
+
+----------------------------------------------------------------------
+Ran 25 tests in 0.061s
+
+OK (skipped=16)

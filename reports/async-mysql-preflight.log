@@ -1,0 +1,1 @@
+未连接MySQL：缺少sqlalchemy, aiomysql, greenlet。请执行python -m pip install -r requirements.txt。

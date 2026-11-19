@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 360"><defs>
+<linearGradient id="purple" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#b6adc9"/><stop offset=".48" stop-color="#8d829f"/><stop offset="1" stop-color="#5c506c"/></linearGradient>
+<linearGradient id="light" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff"/><stop offset=".6" stop-color="#e8e5e4"/><stop offset="1" stop-color="#c4c0bb"/></linearGradient>
+<linearGradient id="sand" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#d5bf9f"/><stop offset=".6" stop-color="#b79d7a"/><stop offset="1" stop-color="#8e7458"/></linearGradient>
+<linearGradient id="green" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#9cab98"/><stop offset=".6" stop-color="#738b77"/><stop offset="1" stop-color="#4c6853"/></linearGradient>
+<linearGradient id="blue" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#91a5bc"/><stop offset=".6" stop-color="#637f9e"/><stop offset="1" stop-color="#3e5975"/></linearGradient>
+<linearGradient id="dark" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#5e5752"/><stop offset="1" stop-color="#292624"/></linearGradient>
+<radialGradient id="wax"><stop stop-color="#fff5dd"/><stop offset="1" stop-color="#e0c7a2"/></radialGradient>
+<filter id="shadow" x="-50%" y="-50%" width="200%" height="200%"><feDropShadow dx="0" dy="12" stdDeviation="9" flood-color="#30253e" flood-opacity=".14"/></filter>
+<pattern id="mesh" width="5" height="5" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r=".8" fill="#293f55" opacity=".35"/></pattern>
+</defs><g filter="url(#shadow)"><path d="M245 153q71-13 61 60t-66 46" stroke="#b5a2b9" stroke-width="20" fill="none"/><path d="M245 153q67-11 57 58t-63 43" stroke="#d1c2d5" stroke-width="11" fill="none"/><path d="M95 141h156l-9 121q-2 36-68 37t-70-37Z" fill="url(#light)"/><path d="M95 141h156l-9 121q-2 36-68 37t-70-37Z" fill="#baa7c6" opacity=".72"/><ellipse cx="173" cy="142" rx="78" ry="22" fill="#decfe5"/><ellipse cx="173" cy="145" rx="65" ry="15" fill="#78627f"/><ellipse cx="173" cy="148" rx="61" ry="10" fill="#594537"/><path d="M112 169v88q1 14 12 20" stroke="#eddfef" stroke-width="5" stroke-linecap="round" fill="none" opacity=".5"/></g></svg>

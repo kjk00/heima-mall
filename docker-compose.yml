@@ -1,0 +1,113 @@
+# Backing services for heima-mall. The Python app stays on the host and reaches
+# these through 127.0.0.1 on the same ports as the native installs, so .env is
+# unchanged. Data is bind-mounted to ./docker-data/<service> on the host so it is
+# directly browsable/backup-able. See scripts/docker_services.sh.
+name: heima-mall
+
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: heima-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: "${MYSQL_PASSWORD:?请在 .env 中设置 MYSQL_PASSWORD}"
+      MYSQL_DATABASE: "${MYSQL_DATABASE:-heima_mall}"
+    ports:
+      - "127.0.0.1:3306:3306"
+    volumes:
+      - ./docker-data/mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: heima-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - ./docker-data/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  elasticsearch:
+    image: elasticsearch:7.17.4
+    container_name: heima-elasticsearch
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+      bootstrap.memory_lock: "true"
+    ulimits:
+      memlock: {soft: -1, hard: -1}
+    ports:
+      - "127.0.0.1:9200:9200"
+    volumes:
+      - ./docker-data/elasticsearch:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 40s
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:4-management
+    container_name: heima-rabbitmq
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
+    volumes:
+      - ./docker-data/rabbitmq:/var/lib/rabbitmq
+      - ./docker/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    restart: unless-stopped
+
+  mongodb:
+    image: mongo:8.0
+    container_name: heima-mongodb
+    ports:
+      - "127.0.0.1:27017:27017"
+    volumes:
+      - ./docker-data/mongodb:/data/db
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --eval \"db.adminCommand('ping')\" || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    restart: unless-stopped
+
+  minio:
+    image: bitnamilegacy/minio:latest
+    container_name: heima-minio
+    environment:
+      MINIO_ROOT_USER: "${OSS_ACCESS_KEY:-minioadmin}"
+      MINIO_ROOT_PASSWORD: "${OSS_SECRET_KEY:-minioadmin}"
+      MINIO_DEFAULT_BUCKETS: "${OSS_BUCKET:-heima-mall}"
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    volumes:
+      - ./docker-data/minio:/bitnami/minio/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://127.0.0.1:9000/minio/health/live || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    restart: unless-stopped

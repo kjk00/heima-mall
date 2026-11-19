@@ -1,0 +1,25 @@
+test_admin_route_guest_and_customer_isolation (__main__.AcceptanceTests.test_admin_route_guest_and_customer_isolation) ... ok
+test_admin_setup_revokes_preexisting_customer_session (__main__.AcceptanceTests.test_admin_setup_revokes_preexisting_customer_session) ... ok
+test_checkout_idempotency_rejects_changed_payload (__main__.AcceptanceTests.test_checkout_idempotency_rejects_changed_payload) ... ok
+test_checkout_idempotency_replay_same_payload (__main__.AcceptanceTests.test_checkout_idempotency_replay_same_payload) ... ok
+test_checkout_mid_transaction_failure_rolls_back_every_write (__main__.AcceptanceTests.test_checkout_mid_transaction_failure_rolls_back_every_write) ... ok
+test_csrf_every_write_route (__main__.AcceptanceTests.test_csrf_every_write_route) ... ok
+test_deep_json_does_not_cause_server_error (__main__.AcceptanceTests.test_deep_json_does_not_cause_server_error) ... ok
+test_invalid_json_types_and_encoding_are_client_errors (__main__.AcceptanceTests.test_invalid_json_types_and_encoding_are_client_errors) ... ok
+test_login_throttle_returns_429 (__main__.AcceptanceTests.test_login_throttle_returns_429) ... ok
+test_online_backup_restore_preserves_order_session_and_inventory (__main__.AcceptanceTests.test_online_backup_restore_preserves_order_session_and_inventory) ... ok
+test_parallel_address_cap_and_single_default (__main__.AcceptanceTests.test_parallel_address_cap_and_single_default) ... ok
+test_parallel_pay_and_cancel_preserve_stock_and_sales (__main__.AcceptanceTests.test_parallel_pay_and_cancel_preserve_stock_and_sales) ... ok
+test_process_crash_rolls_back_uncommitted_inventory (__main__.AcceptanceTests.test_process_crash_rolls_back_uncommitted_inventory) ... ok
+test_public_assets_and_api_security_headers (__main__.AcceptanceTests.test_public_assets_and_api_security_headers) ... ok
+test_randomized_order_lifecycle_conserves_inventory_and_sales (__main__.AcceptanceTests.test_randomized_order_lifecycle_conserves_inventory_and_sales) ... ok
+test_request_size_content_type_and_query_limits (__main__.AcceptanceTests.test_request_size_content_type_and_query_limits) ... ok
+test_session_cookie_secure_flags_and_logout_revocation (__main__.AcceptanceTests.test_session_cookie_secure_flags_and_logout_revocation) ... ok
+test_strict_numeric_fields_reject_coercion_and_extra_amounts (__main__.AcceptanceTests.test_strict_numeric_fields_reject_coercion_and_extra_amounts) ... ok
+test_truncated_images_are_rejected (__main__.AcceptanceTests.test_truncated_images_are_rejected) ... ok
+
+----------------------------------------------------------------------
+Ran 19 tests in 3.395s
+
+OK
+验收原始结果：reports/async-enterprise-quality-results.json

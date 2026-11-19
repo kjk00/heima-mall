@@ -1,0 +1,570 @@
+{
+  "timestamp_utc": "2026-11-19T07:39:58.409223+00:00",
+  "backend": "stdlib",
+  "mode": "real TCP server + temporary SQLite",
+  "total": 70,
+  "passed": 70,
+  "failed": 0,
+  "cases": [
+    {
+      "id": "SYS-HEALTH",
+      "domain": "系统",
+      "technique": "等价类-有效",
+      "description": "健康检查返回200",
+      "passed": true,
+      "detail": "200"
+    },
+    {
+      "id": "SYS-SEC-HEADERS",
+      "domain": "系统",
+      "technique": "错误推测",
+      "description": "响应含安全头nosniff/DENY/CSP",
+      "passed": true,
+      "detail": "{'Date': 'Thu, 19 Nov 2026 07:39:57 GMT', 'Server': 'WSGIServer/0.2 CPython/3.12.15', 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': '15', 'Cache-Control': 'no-store', 'X-Content"
+    },
+    {
+      "id": "SEC-NO-XRW",
+      "domain": "安全",
+      "technique": "错误推测",
+      "description": "写请求缺少X-Requested-With被拒403",
+      "passed": true,
+      "detail": "403"
+    },
+    {
+      "id": "SEC-CROSS-ORIGIN",
+      "domain": "安全",
+      "technique": "错误推测",
+      "description": "跨域Origin写请求被拒绝",
+      "passed": true,
+      "detail": "403"
+    },
+    {
+      "id": "SEC-SQLI-SEARCH",
+      "domain": "安全",
+      "technique": "错误推测",
+      "description": "搜索SQL注入不报错且不泄露全表",
+      "passed": true,
+      "detail": "200"
+    },
+    {
+      "id": "SEC-PATH-TRAVERSAL",
+      "domain": "安全",
+      "technique": "错误推测",
+      "description": "静态目录路径穿越被拒绝",
+      "passed": true,
+      "detail": "404"
+    },
+    {
+      "id": "AUTH-CAPTCHA",
+      "domain": "认证",
+      "technique": "等价类-有效",
+      "description": "验证码返回id与PNG图片",
+      "passed": true,
+      "detail": "200"
+    },
+    {
+      "id": "AUTH-REG-BADPHONE",
+      "domain": "认证",
+      "technique": "等价类-无效",
+      "description": "非法手机号注册被拒",
+      "passed": true,
+      "detail": "期望422 实际422 "
+    },
+    {
+      "id": "AUTH-REG-SHORTPWD",
+      "domain": "认证",
+      "technique": "边界值",
+      "description": "密码不足8位被拒",
+      "passed": true,
+      "detail": "期望422 实际422 "
+    },
+    {
+      "id": "AUTH-REG-FIRST",
+      "domain": "认证",
+      "technique": "等价类-有效",
+      "description": "首次注册成功",
+      "passed": true,
+      "detail": "期望201 实际201 "
+    },
+    {
+      "id": "AUTH-REG-DUP",
+      "domain": "认证",
+      "technique": "错误推测",
+      "description": "重复手机号注册被拒",
+      "passed": true,
+      "detail": "期望409 实际409 "
+    },
+    {
+      "id": "AUTH-LOGIN-NOCAPTCHA",
+      "domain": "认证",
+      "technique": "等价类-无效",
+      "description": "缺少验证码登录被拒",
+      "passed": true,
+      "detail": "期望422 实际422 "
+    },
+    {
+      "id": "AUTH-LOGIN-WRONGCAPTCHA",
+      "domain": "认证",
+      "technique": "等价类-无效",
+      "description": "错误验证码登录被拒",
+      "passed": true,
+      "detail": "期望400 实际400 "
+    },
+    {
+      "id": "AUTH-LOGIN-WRONGPWD",
+      "domain": "认证",
+      "technique": "等价类-无效",
+      "description": "正确验证码错误密码被拒",
+      "passed": true,
+      "detail": "期望401 实际401 "
+    },
+    {
+      "id": "AUTH-LOGIN-OK",
+      "domain": "认证",
+      "technique": "等价类-有效",
+      "description": "正确凭据登录成功",
+      "passed": true,
+      "detail": "期望200 实际200 "
+    },
+    {
+      "id": "AUTH-ME",
+      "domain": "认证",
+      "technique": "等价类-有效",
+      "description": "登录后me返回当前账号",
+      "passed": true,
+      "detail": "200"
+    },
+    {
+      "id": "AUTH-ME-GUEST",
+      "domain": "认证",
+      "technique": "等价类-无效",
+      "description": "未登录me被拒",
+      "passed": true,
+      "detail": "期望401 实际401 "
+    },
+    {
+      "id": "AUTH-LOGOUT",
+      "domain": "认证",
+      "technique": "等价类-有效",
+      "description": "退出登录成功",
+      "passed": true,
+      "detail": "期望200 实际200 "
+    },
+    {
+      "id": "AUTH-ME-AFTER-LOGOUT",
+      "domain": "认证",
+      "technique": "错误推测",
+      "description": "退出后me失效",
+      "passed": true,
+      "detail": "期望401 实际401 "
+    },
+    {
+      "id": "AUTH-REG-OK",
+      "domain": "认证",
+      "technique": "等价类-有效",
+      "description": "有效注册并自动登录",
+      "passed": true,
+      "detail": "期望201 实际201 "
+    },
+    {
+      "id": "PROD-LIST",
+      "domain": "商品",
+      "technique": "等价类-有效",
+      "description": "商品列表返回items与total",
+      "passed": true,
+      "detail": "200"
+    },
+    {
+      "id": "PROD-PAGE-0",
+      "domain": "商品",
+      "technique": "边界值",
+      "description": "page=0被拒",
+      "passed": true,
+      "detail": "期望422 实际422 "
+    },
+    {
+      "id": "PROD-PAGESIZE-0",
+      "domain": "商品",
+      "technique": "边界值",
+      "description": "page_size=0被拒",
+      "passed": true,
+      "detail": "期望422 实际422 "
+    },
+    {
+      "id": "PROD-PAGESIZE-MAX",
+      "domain": "商品",
+      "technique": "边界值",
+      "description": "page_size=50有效",
+      "passed": true,
+      "detail": "期望200 实际200 "
+    },
+    {
+      "id": "PROD-PAGESIZE-OVER",
+      "domain": "商品",
+      "technique": "边界值",
+      "description": "page_size=51被拒",
+      "passed": true,
+      "detail": "期望422 实际422 "
+    },
+    {
+      "id": "PROD-SORT-BAD",
+      "domain": "商品",
+      "technique": "等价类-无效",
+      "description": "非法排序被拒",
+      "passed": true,
+      "detail": "期望422 实际422 "
+    },
+    {
+      "id": "PROD-SORT-PRICE",
+      "domain": "商品",
+      "technique": "等价类-有效",
+      "description": "价格升序排序有效",
+      "passed": true,
+      "detail": "期望200 实际200 "
+    },
+    {
+      "id": "PROD-CATEGORY",
+      "domain": "商品",
+      "technique": "等价类-有效",
+      "description": "分类筛选有效",
+      "passed": true,
+      "detail": "期望200 实际200 "
+    },
+    {
+      "id": "PROD-SEARCH-HIT",
+      "domain": "商品",
+      "technique": "等价类-有效",
+      "description": "关键词搜索命中",
+      "passed": true,
+      "detail": "期望200 实际200 "
+    },
+    {
+      "id": "PROD-SEARCH-MISS",
+      "domain": "商品",
+      "technique": "等价类-无效",
+      "description": "无匹配关键词返回空",
+      "passed": true,
+      "detail": "期望200 实际200 "
+    },
+    {
+      "id": "PROD-DETAIL-OK",
+      "domain": "商品",
+      "technique": "等价类-有效",
+      "description": "商品详情返回",
+      "passed": true,
+      "detail": "期望200 实际200 "
+    },
+    {
+      "id": "PROD-DETAIL-404",
+      "domain": "商品",
+      "technique": "等价类-无效",
+      "description": "不存在商品详情404",
+      "passed": true,
+      "detail": "期望404 实际404 "
+    },
+    {
+      "id": "PROD-DETAIL-BADID",
+      "domain": "商品",
+      "technique": "边界值",
+      "description": "非法商品id被拒",
+      "passed": true,
+      "detail": "期望422 实际422 "
+    },
+    {
+      "id": "PROD-CATEGORIES",
+      "domain": "商品",
+      "technique": "等价类-有效",
+      "description": "分类列表返回",
+      "passed": true,
+      "detail": "期望200 实际200 "
+    },
+    {
+      "id": "CART-ADD-OK",
+      "domain": "购物车",
+      "technique": "等价类-有效",
+      "description": "添加商品到购物车",
+      "passed": true,
+      "detail": "期望200 实际200 "
+    },
+    {
+      "id": "CART-ADD-404",
+      "domain": "购物车",
+      "technique": "等价类-无效",
+      "description": "添加不存在商品被拒",
+      "passed": true,
+      "detail": "期望404 实际404 "
+    },
+    {
+      "id": "CART-ADD-QTY0",
+      "domain": "购物车",
+      "technique": "边界值",
+      "description": "数量0被拒",
+      "passed": true,
+      "detail": "期望422 实际422 "
+    },
+    {
+      "id": "CART-ADD-OVERSTOCK",
+      "domain": "购物车",
+      "technique": "边界值",
+      "description": "超库存数量被拒",
+      "passed": true,
+      "detail": "期望409 实际409 "
+    },
+    {
+      "id": "CART-GET",
+      "domain": "购物车",
+      "technique": "等价类-有效",
+      "description": "查看购物车",
+      "passed": true,
+      "detail": "期望200 实际200 "
+    },
+    {
+      "id": "CART-UPDATE",
+      "domain": "购物车",
+      "technique": "等价类-有效",
+      "description": "更新购物车数量",
+      "passed": true,
+      "detail": "期望200 实际200 "
+    },
+    {
+      "id": "CART-UPDATE-404",
+      "domain": "购物车",
+      "technique": "等价类-无效",
+      "description": "更新未加入商品被拒",
+      "passed": true,
+      "detail": "期望404 实际404 "
+    },
+    {
+      "id": "CART-GUEST",
+      "domain": "购物车",
+      "technique": "等价类-无效",
+      "description": "未登录查看购物车被拒",
+      "passed": true,
+      "detail": "期望401 实际401 "
+    },
+    {
+      "id": "ORDER-CHECKOUT-OK",
+      "domain": "订单",
+      "technique": "等价类-有效",
+      "description": "单店结算创建订单",
+      "passed": true,
+      "detail": "期望201 实际201 "
+    },
+    {
+      "id": "ORDER-IDEMPOTENT",
+      "domain": "订单",
+      "technique": "错误推测",
+      "description": "同一幂等键返回原订单",
+      "passed": true,
+      "detail": "期望201 实际201 "
+    },
+    {
+      "id": "ORDER-IDEMPOTENT-CONFLICT",
+      "domain": "订单",
+      "technique": "错误推测",
+      "description": "同键不同请求体409",
+      "passed": true,
+      "detail": "期望409 实际409 "
+    },
+    {
+      "id": "ORDER-DETAIL",
+      "domain": "订单",
+      "technique": "等价类-有效",
+      "description": "订单详情返回",
+      "passed": true,
+      "detail": "期望200 实际200 "
+    },
+    {
+      "id": "ORDER-LIST",
+      "domain": "订单",
+      "technique": "等价类-有效",
+      "description": "订单列表返回",
+      "passed": true,
+      "detail": "期望200 实际200 "
+    },
+    {
+      "id": "ORDER-PAY",
+      "domain": "订单",
+      "technique": "等价类-有效",
+      "description": "演示支付成功",
+      "passed": true,
+      "detail": "期望200 实际200 "
+    },
+    {
+      "id": "ORDER-PAY-AGAIN",
+      "domain": "订单",
+      "technique": "错误推测",
+      "description": "已支付订单重复支付幂等返回",
+      "passed": true,
+      "detail": "期望200 实际200 "
+    },
+    {
+      "id": "ORDER-CANCEL-PAID",
+      "domain": "订单",
+      "technique": "错误推测",
+      "description": "已支付订单取消被拒",
+      "passed": true,
+      "detail": "期望409 实际409 "
+    },
+    {
+      "id": "ORDER-RECEIVE-UNSHIPPED",
+      "domain": "订单",
+      "technique": "错误推测",
+      "description": "未发货确认收货被拒",
+      "passed": true,
+      "detail": "期望409 实际409 "
+    },
+    {
+      "id": "ORDER-CHECKOUT-EMPTY",
+      "domain": "订单",
+      "technique": "边界值",
+      "description": "空购物车结算被拒",
+      "passed": true,
+      "detail": "400"
+    },
+    {
+      "id": "ORDER-404",
+      "domain": "订单",
+      "technique": "等价类-无效",
+      "description": "不存在订单404",
+      "passed": true,
+      "detail": "期望404 实际404 "
+    },
+    {
+      "id": "COUPON-LIST",
+      "domain": "优惠券",
+      "technique": "等价类-有效",
+      "description": "优惠券列表返回",
+      "passed": true,
+      "detail": "200"
+    },
+    {
+      "id": "COUPON-CLAIM",
+      "domain": "优惠券",
+      "technique": "等价类-有效",
+      "description": "领取优惠券",
+      "passed": true,
+      "detail": "期望200 实际200 "
+    },
+    {
+      "id": "COUPON-CLAIM-DUP",
+      "domain": "优惠券",
+      "technique": "错误推测",
+      "description": "重复领取幂等返回已领取",
+      "passed": true,
+      "detail": "期望200 实际200 "
+    },
+    {
+      "id": "COUPON-CLAIM-404",
+      "domain": "优惠券",
+      "technique": "等价类-无效",
+      "description": "领取不存在优惠券404",
+      "passed": true,
+      "detail": "期望404 实际404 "
+    },
+    {
+      "id": "ADMIN-SETUP-STATUS",
+      "domain": "后台",
+      "technique": "等价类-有效",
+      "description": "初始化状态可查询",
+      "passed": true,
+      "detail": "200"
+    },
+    {
+      "id": "ADMIN-SETUP-OK",
+      "domain": "后台",
+      "technique": "等价类-有效",
+      "description": "本机首次创建终端管理员",
+      "passed": true,
+      "detail": "期望201 实际201 "
+    },
+    {
+      "id": "ADMIN-SETUP-DUP",
+      "domain": "后台",
+      "technique": "错误推测",
+      "description": "二次初始化被拒",
+      "passed": true,
+      "detail": "期望409 实际409 "
+    },
+    {
+      "id": "ADMIN-LOGIN",
+      "domain": "后台",
+      "technique": "等价类-有效",
+      "description": "管理员登录",
+      "passed": true,
+      "detail": "期望200 实际200 "
+    },
+    {
+      "id": "ADMIN-DASHBOARD",
+      "domain": "后台",
+      "technique": "等价类-有效",
+      "description": "经营概览返回",
+      "passed": true,
+      "detail": "期望200 实际200 "
+    },
+    {
+      "id": "ADMIN-PRODUCTS",
+      "domain": "后台",
+      "technique": "等价类-有效",
+      "description": "管理商品列表",
+      "passed": true,
+      "detail": "期望200 实际200 "
+    },
+    {
+      "id": "ADMIN-PRODUCT-CREATE",
+      "domain": "后台",
+      "technique": "等价类-有效",
+      "description": "新增商品成功",
+      "passed": true,
+      "detail": "201"
+    },
+    {
+      "id": "ADMIN-PRODUCT-STATUS",
+      "domain": "后台",
+      "technique": "等价类-有效",
+      "description": "商品下架（乐观锁version）",
+      "passed": true,
+      "detail": "期望200 实际200 "
+    },
+    {
+      "id": "ADMIN-PRODUCT-INACTIVE-HIDDEN",
+      "domain": "后台",
+      "technique": "错误推测",
+      "description": "下架商品商城详情404",
+      "passed": true,
+      "detail": "期望404 实际404 "
+    },
+    {
+      "id": "ADMIN-PERM-ISOLATION",
+      "domain": "后台",
+      "technique": "错误推测",
+      "description": "普通账号访问后台被拒",
+      "passed": true,
+      "detail": "期望403 实际403 "
+    },
+    {
+      "id": "ISO-ORDER-CROSS",
+      "domain": "隔离",
+      "technique": "错误推测",
+      "description": "访问他人订单被拒",
+      "passed": true,
+      "detail": "期望404 实际404 "
+    },
+    {
+      "id": "ISO-PAY-CROSS",
+      "domain": "隔离",
+      "technique": "错误推测",
+      "description": "支付他人订单被拒",
+      "passed": true,
+      "detail": "期望404 实际404 "
+    },
+    {
+      "id": "ISO-CART-CROSS",
+      "domain": "隔离",
+      "technique": "错误推测",
+      "description": "购物车按账号隔离",
+      "passed": true,
+      "detail": "期望200 实际200 "
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+[project]
+name = "heima-mall"
+version = "2.0.0"
+description = "A Python e-commerce starter with a Chinese storefront"
+requires-python = ">=3.12"
+dependencies = ["fastapi>=0.115,<1.0", "uvicorn>=0.30,<1.0", "jinja2>=3.1.6,<4.0", "PyMySQL[rsa]>=1.1,<2.0", "SQLAlchemy[asyncio]>=2.0.40,<3.0", "aiomysql>=0.2,<1.0", "redis>=5.0,<7.0", "Pillow>=11.0,<13.0"]
+
+[project.optional-dependencies]
+cache = ["redis>=5.0,<7.0"]
+test = ["httpx>=0.27,<1.0", "aiosqlite>=0.20,<1.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+

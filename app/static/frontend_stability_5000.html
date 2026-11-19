@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>商城多人访问稳定性测试</title>
+<style>body{max-width:1000px;margin:40px auto;padding:0 24px;font:16px/1.7 system-ui;color:#29243b}button{background:#6547d4;color:white;border:0;padding:12px 24px;border-radius:8px;cursor:pointer}pre{white-space:pre-wrap;background:#f6f4fa;padding:20px;border-radius:8px}table{border-collapse:collapse;width:100%;margin:20px 0}td,th{padding:10px;border-bottom:1px solid #ddd;text-align:left}</style>
+<script src="/static/frontend_stability_5000.js" defer></script></head><body>
+<h1>商城多人访问稳定性测试</h1><p>测试当前商城的真实页面、静态资源和公开接口，共 5,000 名虚拟访客，逐步增加到 200 个并发访问任务。每名访客完成一次包含 7 个请求的浏览流程。</p>
+<p>访问任务来自同一个浏览器，连接数量受浏览器限制；这些数据用于本机稳定性验证。请求省略登录凭据。</p>
+<button id="run">开始多人访问测试</button> <strong id="status">准备就绪</strong>
+<button id="save" disabled>保存 JSON 报告</button>
+<table><thead><tr><th>并发任务</th><th>请求数</th><th>错误数</th><th>请求 P95</th><th>访问 P95</th></tr></thead><tbody id="results"></tbody></table>
+<pre id="output"></pre></body></html>

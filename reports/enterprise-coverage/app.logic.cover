@@ -1,0 +1,262 @@
+    1: """Framework-independent shop operations shared by both HTTP servers."""
+    1: import os
+    1: import secrets
+    1: import sqlite3
+    1: import time
+    1: from app.database import transaction
+    1: from app.errors import MallError as HTTPException
+    1: from app.security import SESSION_SECONDS, create_session, hash_password, token_hash, verify_password
+       
+    1: COOKIE = 'heima_session'
+       
+    1: def current_user(request, connection):
+  853:     token = request.cookies.get(COOKIE)
+  853:     if token:
+  809:         user = connection.execute('SELECT u.id,u.name,u.phone,u.role,u.is_active,u.notify_support,u.store_id,u.is_super_admin FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>?', (token_hash(token), int(time.time()))).fetchone()
+  809:         if user:
+  787:             if not user['is_active']:
+>>>>>>                 raise HTTPException(403, '账号已停用，请联系管理员')
+  787:             return dict(user)
+   66:     raise HTTPException(401, '请先登录，再继续操作')
+       
+    1: def session_cookie(response, token):
+  219:     response.set_cookie(COOKIE, token, max_age=SESSION_SECONDS, httponly=True, secure=os.getenv('COOKIE_SECURE') == '1', samesite='lax', path='/')
+       
+    1: def cart_data(connection, user_id, store_id=None):
+  244:     from app.shops import product_data
+  244:     rows = connection.execute('SELECT p.*,c.quantity FROM cart_items c JOIN products p ON p.id=c.product_id WHERE c.user_id=? ORDER BY p.id', (user_id,)).fetchall()
+  752:     items = [product_data(row,connection) | {'line_total': row['price'] * row['quantity']} for row in rows
+  254:              if store_id is None or row['store_id']==store_id]
+  244:     groups={}
+  494:     for item in items:
+  500:         group=groups.setdefault(item['store_id'],{'store_id':item['store_id'],'store_name':item['store_name'],
+  250:             'store_active':item['store_active'],'store_version':item['store_version'],
+  250:             'free_shipping_threshold':item['free_shipping_threshold'],'items':[]})
+  250:         group['items'].append(item)
+  491:     for group in groups.values():
+  744:         group['subtotal']=sum(i['line_total'] for i in group['items'])
+  744:         group['count']=sum(i['quantity'] for i in group['items'])
+  247:         group['shipping_fee']=0 if group['subtotal']>=group['free_shipping_threshold'] else group['items'][0]['store_shipping_fee']
+  247:         group['total']=group['subtotal']+group['shipping_fee']
+  738:     subtotal = sum((item['line_total'] for item in items))
+  735:     shipping = sum(g['shipping_fee'] for g in groups.values())
+  738:     return {'items': items, 'groups':list(groups.values()),'count': sum((item['quantity'] for item in items)), 'subtotal': subtotal, 'shipping_fee': shipping, 'total': subtotal + shipping}
+       
+    1: def order_data(connection, order_id, user_id):
+  242:     row = connection.execute('SELECT * FROM orders WHERE id=? AND user_id=?', (order_id, user_id)).fetchone()
+  242:     if not row:
+    5:         raise HTTPException(404, '订单不存在')
+  237:     result = dict(row)
+  237:     result.pop('idempotency_key')
+  473:     result['items'] = [dict(item) for item in connection.execute('SELECT product_id,name,image,price,quantity FROM order_items WHERE order_id=? ORDER BY id', (order_id,)).fetchall()]
+  237:     refund=connection.execute('SELECT id,reason,amount,status,note,created_at,processed_at FROM refunds WHERE order_id=? ORDER BY id DESC LIMIT 1',(order_id,)).fetchone()
+  237:     result['refund']=dict(refund) if refund else None
+  640:     result['tracking_events']=[dict(r) for r in connection.execute('SELECT stage,note,created_at FROM tracking_events WHERE order_id=? ORDER BY id',(order_id,))]
+  237:     return result
+       
+    1: def health(connection):
+    1:     connection.execute('SELECT 1')
+    1:     return {'status': 'ok'}
+       
+    1: def categories(connection):
+   22:     return [dict(row) for row in connection.execute('SELECT category AS name,COUNT(*) AS count FROM products WHERE is_active=1 AND store_id IN (SELECT id FROM stores WHERE is_active=1) GROUP BY category ORDER BY MIN(id)')]
+       
+    1: def products(connection, q='', category='', sort='recommended', page=1, page_size=12, on_sale=False,store_id=None):
+   18:     from app.shops import product_data
+   18:     conditions, parameters = (['is_active=1','store_id IN (SELECT id FROM stores WHERE is_active=1)'], [])
+   18:     if store_id is not None:
+    3:         conditions.append('store_id=?');parameters.append(store_id)
+   18:     if on_sale: conditions.append('original_price>price')
+   18:     if q.strip():
+    5:         conditions.append("(name LIKE ? ESCAPE '\\' OR subtitle LIKE ? ESCAPE '\\' OR store_id IN (SELECT id FROM stores WHERE name LIKE ? ESCAPE '\\'))")
+    5:         search = q.strip().replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+    5:         parameters.extend([f'%{search}%', f'%{search}%', f'%{search}%'])
+   18:     if category:
+    2:         conditions.append('category=?')
+    2:         parameters.append(category)
+   18:     where = ' WHERE ' + ' AND '.join(conditions) if conditions else ''
+   18:     sorting = {'recommended': 'id ASC', 'newest': 'id DESC', 'popular': 'sales DESC,id ASC', 'price_asc': 'price ASC,id ASC', 'price_desc': 'price DESC,id ASC'}[sort]
+   18:     total = connection.execute('SELECT COUNT(*) FROM products' + where, parameters).fetchone()[0]
+   18:     rows = connection.execute('SELECT * FROM products' + where + ' ORDER BY ' + sorting + ' LIMIT ? OFFSET ?', parameters + [page_size, (page - 1) * page_size]).fetchall()
+  113:     return {'items': [product_data(row,connection) for row in rows], 'total': total, 'page': page, 'page_size': page_size}
+       
+    1: def product(product_id, connection):
+   55:     from app.shops import product_data
+   55:     row = connection.execute('SELECT * FROM products WHERE id=? AND is_active=1 AND store_id IN (SELECT id FROM stores WHERE is_active=1)', (product_id,)).fetchone()
+   55:     if not row:
+    5:         raise HTTPException(404, '商品不存在')
+   50:     return product_data(row,connection)
+       
+    1: def register(payload, response, connection):
+  128:     password = hash_password(payload.password)
+  128:     try:
+  256:         with transaction(connection):
+  128:             result = connection.execute('INSERT INTO users(phone,name,password_hash) VALUES (?,?,?)', (payload.phone, payload.name, password))
+  127:             token = create_session(connection, result.lastrowid)
+    1:     except sqlite3.IntegrityError:
+    1:         raise HTTPException(409, '该手机号已注册，请直接登录')
+  127:     session_cookie(response, token)
+  127:     return {'id': result.lastrowid, 'name': payload.name, 'phone': payload.phone, 'role': 'customer', 'is_active': 1}
+       
+    1: def login(payload, response, request, connection, admin_only=False):
+   34:     attempts = request.app.state.login_attempts
+   34:     now = time.monotonic()
+   34:     key = request.client.host if request.client else 'unknown'
+   68:     with request.app.state.login_lock:
+   73:         attempts[:] = [(host, stamp) for host, stamp in attempts if now - stamp < 60]
+  107:         if sum((host == key for host, _ in attempts)) >= 20 or len(attempts) >= 10000:
+>>>>>>             raise HTTPException(429, '登录尝试过于频繁，请一分钟后重试')
+   34:         attempts.append((key, now))
+   34:     row = connection.execute('SELECT * FROM users WHERE phone=?', (payload.phone,)).fetchone()
+   34:     encoded = row['password_hash'] if row else request.app.state.dummy_password
+   34:     valid = verify_password(payload.password, encoded)
+   34:     if not row or not valid:
+    1:         raise HTTPException(401, '手机号或密码不正确')
+   33:     if not row['is_active']:
+    1:         raise HTTPException(403, '账号已停用，请联系管理员')
+   32:     if admin_only and row['role'] != 'admin':
+    1:         raise HTTPException(403, '该账号没有后台管理权限')
+   31:     if admin_only:
+   27:         from app.admin import require_admin
+   27:         require_admin(dict(row))
+   30:     token = create_session(connection, row['id'])
+   30:     session_cookie(response, token)
+  240:     return {key: row[key] for key in ('id','name','phone','role','is_active','store_id','is_super_admin')}
+       
+    1: def me(user):
+    7:     return user
+       
+    1: def logout(request, response, connection):
+    2:     token = request.cookies.get(COOKIE)
+    2:     if token:
+    2:         connection.execute('DELETE FROM sessions WHERE token_hash=?', (token_hash(token),))
+    2:     response.delete_cookie(COOKIE, path='/')
+    2:     return {'message': '已退出登录'}
+       
+    1: def get_cart(user, connection):
+   14:     return cart_data(connection, user['id'])
+       
+    1: def add_cart(payload, user, connection):
+   58:     from app.shops import store_row
+  116:     with transaction(connection):
+   58:         product = connection.execute('SELECT stock,is_active,store_id FROM products WHERE id=?', (payload.product_id,)).fetchone()
+   58:         if not product:
+    1:             raise HTTPException(404, '商品不存在')
+   57:         if not product['is_active']:
+    1:             raise HTTPException(409, '商品已下架，请选购其他商品')
+   56:         store_row(product['store_id'],connection,active=True)
+   55:         existing = connection.execute('SELECT quantity FROM cart_items WHERE user_id=? AND product_id=?', (user['id'], payload.product_id)).fetchone()
+   55:         quantity = (existing['quantity'] if existing else 0) + payload.quantity
+   55:         if quantity > min(product['stock'], 99):
+    1:             raise HTTPException(409, '库存不足，或购物车数量已达到上限')
+   54:         connection.execute('INSERT INTO cart_items VALUES (?,?,?) ON CONFLICT(user_id,product_id) DO UPDATE SET quantity=excluded.quantity', (user['id'], payload.product_id, quantity))
+   54:     return cart_data(connection, user['id'])
+       
+    1: def update_cart(product_id, payload, user, connection):
+    3:     from app.shops import store_row
+    6:     with transaction(connection):
+    3:         row = connection.execute('SELECT p.stock,p.is_active,p.store_id FROM cart_items c JOIN products p ON p.id=c.product_id WHERE c.user_id=? AND c.product_id=?', (user['id'], product_id)).fetchone()
+    3:         if not row:
+    1:             raise HTTPException(404, '购物车中没有该商品')
+    2:         if not row['is_active']:
+    1:             raise HTTPException(409, '商品已下架，请从购物车移除')
+    1:         store_row(row['store_id'],connection,active=True)
+    1:         if payload.quantity > row['stock']:
+>>>>>>             raise HTTPException(409, '商品库存不足')
+    1:         connection.execute('UPDATE cart_items SET quantity=? WHERE user_id=? AND product_id=?', (payload.quantity, user['id'], product_id))
+    1:     return cart_data(connection, user['id'])
+       
+    1: def remove_cart(product_id, user, connection):
+    1:     connection.execute('DELETE FROM cart_items WHERE user_id=? AND product_id=?', (user['id'], product_id))
+    1:     return cart_data(connection, user['id'])
+       
+    1: def checkout(payload, user, connection):
+   95:     from app import features
+   95:     from app.shops import store_row
+   95:     from app.schemas import AddressInput
+  190:     with transaction(connection):
+   95:         account = connection.execute('SELECT is_active FROM users WHERE id=?', (user['id'],)).fetchone()
+   95:         if not account or not account['is_active']:
+    1:             raise HTTPException(403, '账号已停用，无法继续下单')
+   94:         existing = connection.execute('SELECT id FROM orders WHERE user_id=? AND idempotency_key=?', (user['id'], payload.idempotency_key)).fetchone()
+   94:         if existing:
+    5:             saved=order_data(connection,existing['id'],user['id'])
+    5:             if payload.store_id is not None and saved['store_id']!=payload.store_id:
+    1:                 raise HTTPException(409,'该请求编号已用于其他店铺订单，请重新结算')
+    4:             return saved
+   89:         cart = cart_data(connection, user['id'])
+   89:         if not cart['items']:
+    2:             raise HTTPException(400, '购物车为空，请先选购商品')
+   87:         if payload.store_id is None and len(cart['groups'])>1:
+    1:             raise HTTPException(409,'购物车包含多家店铺，请选择店铺分别结算')
+   86:         store_id=payload.store_id or cart['groups'][0]['store_id']
+   86:         store=store_row(store_id,connection,active=True)
+   85:         cart=cart_data(connection,user['id'],store_id)
+   85:         if not cart['items']:raise HTTPException(400,'所选店铺的购物车为空')
+  157:         for item in cart['items']:
+   86:             if not item['is_active']:
+    1:                 raise HTTPException(409, f"{item['name']} 已下架，请从购物车移除")
+   85:             if item['quantity'] > item['stock']:
+   13:                 raise HTTPException(409, f"{item['name']} 库存不足，请调整数量")
+   71:         order_id = 'HM' + time.strftime('%Y%m%d') + secrets.token_hex(6).upper()
+   71:         discount=features.coupon_discount(payload.coupon_id,cart['subtotal'],user,connection,store_id)
+   66:         address=features.address_row(payload.address_id,user,connection) if payload.address_id else {'recipient':payload.recipient,'phone':payload.phone,'address':payload.address}
+   65:         connection.execute('INSERT INTO orders(id,user_id,subtotal,shipping_fee,total,recipient,phone,address,idempotency_key,discount,coupon_id,store_id,store_name) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)', (order_id, user['id'], cart['subtotal'], cart['shipping_fee'], cart['total']-discount, address['recipient'], address['phone'], address['address'], payload.idempotency_key,discount,payload.coupon_id,store_id,store['name']))
+   65:         if payload.coupon_id: connection.execute('UPDATE user_coupons SET used_order_id=? WHERE user_id=? AND coupon_id=?',(order_id,user['id'],payload.coupon_id))
+   65:         if payload.save_address and not payload.address_id and not connection.execute('SELECT 1 FROM addresses WHERE user_id=? AND recipient=? AND phone=? AND address=?',(user['id'],payload.recipient,payload.phone,payload.address)).fetchone():
+    1:             features.save_address(AddressInput(payload.recipient,payload.phone,payload.address),user,connection)
+   65:         features.tracking_event(connection,order_id,'awaiting','订单已创建，等待支付')
+  130:         for item in cart['items']:
+   65:             connection.execute('INSERT INTO order_items(order_id,product_id,name,image,price,quantity) VALUES (?,?,?,?,?,?)', (order_id, item['id'], item['name'], item['image'], item['price'], item['quantity']))
+   65:             connection.execute('UPDATE products SET stock=stock-?,version=version+1 WHERE id=?', (item['quantity'], item['id']))
+   65:         connection.execute('DELETE FROM cart_items WHERE user_id=? AND product_id IN (SELECT id FROM products WHERE store_id=?)', (user['id'],store_id))
+   65:         return order_data(connection, order_id, user['id'])
+       
+    1: def orders(user, connection, page=1, page_size=10):
+    3:     total = connection.execute('SELECT COUNT(*) FROM orders WHERE user_id=?', (user['id'],)).fetchone()[0]
+    3:     ids = connection.execute('SELECT id FROM orders WHERE user_id=? ORDER BY created_at DESC,rowid DESC LIMIT ? OFFSET ?', (user['id'], page_size, (page - 1) * page_size)).fetchall()
+    4:     return {'items': [order_data(connection, row['id'], user['id']) for row in ids], 'total': total, 'page': page, 'page_size': page_size}
+       
+    1: def order(order_id, user, connection):
+   10:     return order_data(connection, order_id, user['id'])
+       
+    1: def pay(order_id, user, connection):
+   37:     from app.features import refund_open,tracking_event
+   37:     from app.shops import store_row
+   74:     with transaction(connection):
+   37:         order = order_data(connection, order_id, user['id'])
+   36:         if refund_open(order_id,connection): raise HTTPException(409,'订单正在退款或已退款')
+   35:         if order['status'] == 'cancelled':
+    1:             raise HTTPException(409, '订单已取消，无法支付')
+   34:         if order['status'] == 'pending':
+   33:             store_row(order['store_id'],connection,active=True)
+   33:             connection.execute("UPDATE orders SET status='paid' WHERE id=?", (order_id,))
+   33:             tracking_event(connection,order_id,'awaiting','支付成功，等待店铺处理')
+   66:             for item in order['items']:
+   33:                 connection.execute('UPDATE products SET sales=sales+?,version=version+1 WHERE id=?', (item['quantity'], item['product_id']))
+   34:         return order_data(connection, order_id, user['id']) | {'message': '演示支付成功，未发生真实扣款'}
+       
+    1: def cancel(order_id, user, connection):
+   18:     with transaction(connection):
+    9:         order = order_data(connection, order_id, user['id'])
+    8:         if order['status'] == 'paid':
+    2:             raise HTTPException(409, '已支付订单暂不支持取消')
+    6:         if order['status'] == 'pending':
+    4:             connection.execute("UPDATE orders SET status='cancelled' WHERE id=?", (order_id,))
+    4:             connection.execute('UPDATE user_coupons SET used_order_id=NULL WHERE used_order_id=?',(order_id,))
+    8:             for item in order['items']:
+    4:                 connection.execute('UPDATE products SET stock=stock+?,version=version+1 WHERE id=?', (item['quantity'], item['product_id']))
+    6:         return order_data(connection, order_id, user['id'])
+       
+       
+    1: def receive(order_id, user, connection):
+    6:     from app.features import refund_open,tracking_event
+   12:     with transaction(connection):
+    6:         order = order_data(connection, order_id, user['id'])
+    5:         if refund_open(order_id,connection): raise HTTPException(409,'退款中的订单无法确认收货')
+    4:         if order['status'] != 'paid' or order['fulfillment_status'] not in {'shipped', 'completed'}:
+    1:             raise HTTPException(409, '订单尚未发货，无法确认收货')
+    3:         if order['fulfillment_status'] == 'shipped':
+    2:             connection.execute("UPDATE orders SET fulfillment_status='completed',delivery_stage='delivered',completed_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE id=?", (order_id,))
+    2:             tracking_event(connection,order_id,'delivered','用户已确认收货')
+    3:         return order_data(connection, order_id, user['id'])

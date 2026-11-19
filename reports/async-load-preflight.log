@@ -1,0 +1,1 @@
+未执行异步压测：缺少fastapi, jinja2, sqlalchemy, greenlet, aiomysql, httpx, aiosqlite。请安装requirements-dev.txt。

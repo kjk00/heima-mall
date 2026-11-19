@@ -1,0 +1,380 @@
+    1: """Account, promotions, after-sales, product discussions and shop support."""
+    1: import sqlite3
+    1: import time
+    1: from dataclasses import asdict
+    1: from datetime import datetime, timezone
+    1: from app import logic
+    1: from app.admin import admin_order, require_admin, scope_clause, store_scope
+    1: from app.database import transaction
+    1: from app.errors import MallError
+    1: from app.security import hash_password, verify_password, create_session
+       
+       
+    1: def now():
+   31:     return datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+       
+       
+    1: def page_data(connection, sql, args=(), page=1, page_size=10):
+   26:     total = connection.execute('SELECT COUNT(*) FROM (' + sql + ')', args).fetchone()[0]
+   26:     rows = connection.execute(sql + ' LIMIT ? OFFSET ?', (*args, page_size, (page-1)*page_size))
+   58:     return {'items': [dict(r) for r in rows], 'total': total, 'page': page, 'page_size': page_size}
+       
+       
+    1: def addresses(user, connection):
+    9:     return [dict(r) for r in connection.execute('SELECT * FROM addresses WHERE user_id=? ORDER BY is_default DESC,id DESC', (user['id'],))]
+       
+       
+    1: def address_row(address_id, user, connection):
+    9:     row = connection.execute('SELECT * FROM addresses WHERE id=? AND user_id=?', (address_id,user['id'])).fetchone()
+    9:     if not row: raise MallError(404,'地址不存在')
+    6:     return dict(row)
+       
+       
+    1: def save_address(payload, user, connection, address_id=None):
+    5:     if address_id is not None: address_row(address_id,user,connection)
+    4:     count = connection.execute('SELECT COUNT(*) FROM addresses WHERE user_id=?',(user['id'],)).fetchone()[0]
+    4:     if address_id is None and count >= 50: raise MallError(409,'最多保存 50 个地址')
+    4:     make_default = payload.is_default or not connection.execute('SELECT 1 FROM addresses WHERE user_id=? AND is_default=1',(user['id'],)).fetchone()
+    4:     if make_default: connection.execute('UPDATE addresses SET is_default=0 WHERE user_id=?',(user['id'],))
+    4:     values = (payload.recipient,payload.phone,payload.address,payload.label,make_default)
+    4:     if address_id is None:
+    4:         address_id = connection.execute('INSERT INTO addresses(recipient,phone,address,label,is_default,user_id) VALUES (?,?,?,?,?,?)',(*values,user['id'])).lastrowid
+           else:
+>>>>>>         connection.execute('UPDATE addresses SET recipient=?,phone=?,address=?,label=?,is_default=? WHERE id=? AND user_id=?',(*values,address_id,user['id']))
+           # Turning off the only default picks another address (or retains this one).
+    4:     if not connection.execute('SELECT 1 FROM addresses WHERE user_id=? AND is_default=1',(user['id'],)).fetchone():
+>>>>>>         connection.execute('UPDATE addresses SET is_default=1 WHERE id=(SELECT id FROM addresses WHERE user_id=? ORDER BY (id=?) ASC,id LIMIT 1)',(user['id'],address_id))
+    4:     return address_row(address_id,user,connection)
+       
+       
+    1: def create_address(payload,user,connection):
+    3:     with transaction(connection): return save_address(payload,user,connection)
+       
+       
+    1: def update_address(address_id,payload,user,connection):
+    2:     with transaction(connection): return save_address(payload,user,connection,address_id)
+       
+       
+    1: def delete_address(address_id,user,connection):
+    4:     with transaction(connection):
+    2:         address_row(address_id,user,connection)
+    1:         connection.execute('DELETE FROM addresses WHERE id=? AND user_id=?',(address_id,user['id']))
+    1:         if not connection.execute('SELECT 1 FROM addresses WHERE user_id=? AND is_default=1',(user['id'],)).fetchone():
+    1:             connection.execute('UPDATE addresses SET is_default=1 WHERE id=(SELECT id FROM addresses WHERE user_id=? ORDER BY id DESC LIMIT 1)',(user['id'],))
+    1:     return addresses(user,connection)
+       
+       
+    1: def settings(user,connection):
+   21:     return dict(connection.execute('SELECT name,phone,notify_support FROM users WHERE id=?',(user['id'],)).fetchone())
+       
+       
+    1: def update_settings(payload,user,connection):
+    1:     connection.execute('UPDATE users SET name=?,notify_support=? WHERE id=?',(payload.name,payload.notify_support,user['id']))
+    1:     return settings(user,connection)
+       
+       
+    1: def change_password(payload,user,response,connection):
+    4:     with transaction(connection):
+    2:         row = connection.execute('SELECT password_hash FROM users WHERE id=?',(user['id'],)).fetchone()
+    2:         if not verify_password(payload.old_password,row['password_hash']): raise MallError(400,'原密码不正确')
+    1:         connection.execute('UPDATE users SET password_hash=? WHERE id=?',(hash_password(payload.new_password),user['id']))
+    1:         connection.execute('DELETE FROM sessions WHERE user_id=?',(user['id'],))
+    1:         token = create_session(connection,user['id'])
+    1:     logic.session_cookie(response,token)
+    1:     return {'message':'密码已修改，其他设备已退出登录'}
+       
+       
+    1: def coupons(user,connection):
+   36:     return [dict(r) for r in connection.execute('''SELECT c.*,uc.claimed_at,uc.used_order_id,
+               (SELECT COUNT(*) FROM user_coupons WHERE coupon_id=c.id) AS claimed_count
+               FROM coupons c LEFT JOIN user_coupons uc ON uc.coupon_id=c.id AND uc.user_id=?
+    9:         WHERE c.is_active=1 OR uc.user_id IS NOT NULL ORDER BY c.id DESC''',(user['id'],))]
+       
+       
+    1: def claim_coupon(coupon_id,user,connection):
+   22:     with transaction(connection):
+   11:         row = connection.execute('SELECT * FROM coupons WHERE id=?',(coupon_id,)).fetchone()
+   11:         if not row: raise MallError(404,'优惠券不存在')
+   11:         if connection.execute('SELECT 1 FROM user_coupons WHERE user_id=? AND coupon_id=?',(user['id'],coupon_id)).fetchone(): return {'message':'已领取'}
+   10:         if not row['is_active'] or not row['starts_at'] <= now() < row['expires_at']: raise MallError(409,'优惠券尚未开始或已失效')
+    9:         if connection.execute('SELECT COUNT(*) FROM user_coupons WHERE coupon_id=?',(coupon_id,)).fetchone()[0] >= row['claim_limit']: raise MallError(409,'优惠券已领完')
+    8:         connection.execute('INSERT INTO user_coupons(user_id,coupon_id) VALUES (?,?)',(user['id'],coupon_id))
+    8:     return {'message':'领取成功'}
+       
+       
+    1: def coupon_discount(coupon_id,subtotal,user,connection,store_id=None):
+   71:     if coupon_id is None: return 0
+   36:     c = connection.execute('''SELECT c.*,uc.used_order_id FROM coupons c JOIN user_coupons uc ON uc.coupon_id=c.id
+   24:         WHERE c.id=? AND uc.user_id=?''',(coupon_id,user['id'])).fetchone()
+   12:     if not c or c['used_order_id'] or not c['is_active'] or not c['starts_at'] <= now() < c['expires_at']: raise MallError(409,'优惠券未领取、已使用或已失效')
+   10:     if c['store_id'] is not None and c['store_id'] != store_id: raise MallError(409,'优惠券仅限所属店铺使用')
+    9:     if subtotal < c['threshold']: raise MallError(409,'商品金额未达到优惠券使用门槛')
+    7:     discount = c['value'] if c['kind']=='amount' else (subtotal*(100-c['value'])+50)//100
+    7:     return min(subtotal,discount,c['max_discount'] or subtotal)
+       
+       
+    1: def admin_coupons(user,connection,page=1,page_size=10):
+    2:     require_admin(user)
+    2:     where, args = scope_clause(user, 'c.store_id')
+    2:     return page_data(connection,'SELECT c.*,(SELECT COUNT(*) FROM user_coupons WHERE coupon_id=c.id) AS claimed_count FROM coupons c WHERE ' + where + ' ORDER BY id DESC',args,page,page_size)
+       
+       
+    1: def admin_save_coupon(payload,user,connection,coupon_id=None):
+    6:     require_admin(user)
+    6:     values = asdict(payload)
+    6:     try:
+   12:         with transaction(connection):
+    6:             if coupon_id is not None:
+    4:                 where, args = scope_clause(user)
+    4:                 old=connection.execute('SELECT * FROM coupons WHERE id=? AND ' + where,(coupon_id,*args)).fetchone()
+    4:                 if not old: raise MallError(404,'优惠券不存在')
+    4:             values['store_id'] = store_scope(user, payload.store_id)
+    4:             if values['store_id'] is not None:
+    1:                 from app.shops import store_row
+    1:                 store_row(values['store_id'],connection)
+    4:             if coupon_id is None:
+   26:                 coupon_id=connection.execute('INSERT INTO coupons('+','.join(values)+') VALUES ('+','.join('?' for _ in values)+')',tuple(values.values())).lastrowid
+                   else:
+                       # Issued terms are immutable, but availability and quota may be managed.
+    2:                 claimed=connection.execute('SELECT COUNT(*) FROM user_coupons WHERE coupon_id=?',(coupon_id,)).fetchone()[0]
+   14:                 if claimed and any(old[k]!=values[k] for k in ('code','kind','value','threshold','max_discount','starts_at','expires_at','store_id')): raise MallError(409,'已领取优惠券不可修改优惠规则，请新建优惠券')
+    1:                 if payload.claim_limit < claimed: raise MallError(409,'领取上限不能低于已领取数量')
+   13:                 connection.execute('UPDATE coupons SET '+','.join(k+'=?' for k in values)+' WHERE id=?',(*values.values(),coupon_id))
+    3:     except sqlite3.IntegrityError: raise MallError(409,'券码已存在')
+    3:     return dict(connection.execute('SELECT * FROM coupons WHERE id=?',(coupon_id,)).fetchone())
+       
+       
+    1: def history(user,connection,page=1,page_size=10):
+    6:     return page_data(connection,'''SELECT p.*,h.viewed_at FROM browsing_history h JOIN products p ON p.id=h.product_id
+    3:         WHERE h.user_id=? ORDER BY h.sort_key DESC,p.id DESC''',(user['id'],),page,page_size)
+       
+       
+    1: def record_history(payload,user,connection):
+    4:     logic.product(payload.product_id,connection)
+    8:     connection.execute('''INSERT INTO browsing_history VALUES (?,?,?,?) ON CONFLICT(user_id,product_id)
+    4:         DO UPDATE SET viewed_at=excluded.viewed_at,sort_key=excluded.sort_key''',(user['id'],payload.product_id,now(),time.time_ns()))
+    4:     return {'message':'已记录'}
+       
+       
+    1: def clear_history(user,connection):
+    1:     connection.execute('DELETE FROM browsing_history WHERE user_id=?',(user['id'],))
+    1:     return {'message':'浏览历史已清空'}
+       
+       
+    1: def refund_open(order_id,connection):
+   69:     return connection.execute("SELECT 1 FROM refunds WHERE order_id=? AND status IN ('pending','approved')",(order_id,)).fetchone()
+       
+       
+    1: def request_refund(order_id,payload,user,connection):
+   28:     with transaction(connection):
+   14:         order=logic.order_data(connection,order_id,user['id'])
+   13:         existing=connection.execute('SELECT * FROM refunds WHERE user_id=? AND idempotency_key=?',(user['id'],payload.idempotency_key)).fetchone()
+   13:         if existing:
+    1:             if existing['order_id']!=order_id or existing['reason']!=payload.reason: raise MallError(409,'幂等键已用于其他退款请求')
+    1:             return dict(existing)
+   12:         if order['status']!='paid': raise MallError(409,'只有已支付订单可以申请退款')
+   11:         if refund_open(order_id,connection): raise MallError(409,'该订单已有退款申请')
+   11:         rid=connection.execute('INSERT INTO refunds(order_id,user_id,reason,amount,idempotency_key) VALUES (?,?,?,?,?)',(order_id,user['id'],payload.reason,order['total'],payload.idempotency_key)).lastrowid
+   11:     return dict(connection.execute('SELECT * FROM refunds WHERE id=?',(rid,)).fetchone())
+       
+       
+    1: def admin_refunds(user,connection,page=1,page_size=10):
+    2:     require_admin(user)
+    2:     where, args = scope_clause(user, 'o.store_id')
+    8:     return page_data(connection,'''SELECT r.*,u.name,o.fulfillment_status FROM refunds r JOIN users u ON u.id=r.user_id
+    6:         JOIN orders o ON o.id=r.order_id WHERE ''' + where + " ORDER BY (r.status='pending') DESC,r.id DESC",args,page,page_size)
+       
+       
+    1: def admin_decide_refund(refund_id,payload,user,connection):
+   11:     require_admin(user)
+   22:     with transaction(connection):
+   11:         row=connection.execute('SELECT * FROM refunds WHERE id=?',(refund_id,)).fetchone()
+   11:         if not row: raise MallError(404,'退款申请不存在')
+   11:         order=admin_order(row['order_id'],user,connection)
+   10:         decision='approved' if payload.approve else 'rejected'
+   10:         if row['status']!='pending':
+    3:             if row['status']==decision: return dict(row)
+    1:             raise MallError(409,'该退款申请已经审核')
+    7:         restock=payload.approve and (payload.restock or order['fulfillment_status']=='unfulfilled')
+    7:         connection.execute('UPDATE refunds SET status=?,note=?,restocked=?,processed_by=?,processed_at=? WHERE id=?',(decision,payload.note,restock,user['id'],now(),refund_id))
+    7:         if payload.approve:
+   12:             for item in order['items']:
+    6:                 connection.execute('UPDATE products SET stock=stock+?,sales=MAX(0,sales-?),version=version+1 WHERE id=?',(item['quantity'] if restock else 0,item['quantity'],item['product_id']))
+    6:             connection.execute('UPDATE user_coupons SET used_order_id=NULL WHERE used_order_id=?',(order['id'],))
+    7:     return dict(connection.execute('SELECT * FROM refunds WHERE id=?',(refund_id,)).fetchone())
+       
+       
+    1: STAGES=('awaiting','packing','dispatched','transit','delivered')
+    1: STAGE_LABELS={'awaiting':'等待处理','packing':'打包中','dispatched':'已发货','transit':'运输中','delivered':'已到货'}
+       
+       
+    1: def tracking_event(connection,order_id,stage,note=''):
+  109:     connection.execute('INSERT INTO tracking_events(order_id,stage,note) VALUES (?,?,?)',(order_id,stage,note or STAGE_LABELS[stage]))
+       
+       
+    1: def admin_tracking(order_id,payload,user,connection):
+    7:     require_admin(user)
+   14:     with transaction(connection):
+    7:         order=admin_order(order_id,user,connection)
+    6:         if order['status']!='paid' or refund_open(order_id,connection): raise MallError(409,'订单未支付或正在退款，无法更新物流')
+    6:         old=order['delivery_stage']
+    6:         if payload.stage==old: return order
+    5:         if STAGES.index(payload.stage)<STAGES.index(old): raise MallError(409,'物流状态不能回退')
+    4:         if payload.stage=='packing' and order['fulfillment_status']!='unfulfilled': raise MallError(409,'订单已经发货')
+    4:         if payload.stage in {'transit','delivered'} and order['fulfillment_status']=='unfulfilled': raise MallError(409,'请先填写物流单号并发货')
+    3:         connection.execute('UPDATE orders SET delivery_stage=? WHERE id=?',(payload.stage,order_id))
+    3:         tracking_event(connection,order_id,payload.stage,payload.note)
+    3:     return admin_order(order_id,user,connection)
+       
+       
+    1: def discussions(product_id,connection,kind='comments',page=1,page_size=10):
+    5:     if not connection.execute('SELECT 1 FROM products WHERE id=?',(product_id,)).fetchone(): raise MallError(404,'商品不存在')
+    5:     table='reviews' if kind=='reviews' else 'comments'
+    5:     columns='r.id,u.name,r.content,r.created_at'+(',r.rating,r.updated_at' if table=='reviews' else '')
+    5:     result=page_data(connection,f'SELECT {columns} FROM {table} r JOIN users u ON u.id=r.user_id WHERE r.product_id=? AND r.is_visible=1 ORDER BY r.id DESC',(product_id,),page,page_size)
+    5:     if table=='reviews':
+    2:         result['average_rating']=connection.execute('SELECT COALESCE(AVG(rating),0) FROM reviews WHERE product_id=? AND is_visible=1',(product_id,)).fetchone()[0]
+    5:     return result
+       
+       
+    3: def product_reviews(product_id,connection,page=1,page_size=10): return discussions(product_id,connection,'reviews',page,page_size)
+       
+    4: def product_comments(product_id,connection,page=1,page_size=10): return discussions(product_id,connection,'comments',page,page_size)
+       
+       
+    1: def write_review(product_id,payload,user,connection):
+   10:     with transaction(connection):
+   15:         purchase=connection.execute('''SELECT o.id FROM orders o JOIN order_items i ON i.order_id=o.id
+                   WHERE o.user_id=? AND i.product_id=? AND o.status='paid'
+                   AND NOT EXISTS (SELECT 1 FROM refunds r WHERE r.order_id=o.id AND r.status IN ('pending','approved'))
+   10:             ORDER BY o.created_at DESC LIMIT 1''',(user['id'],product_id)).fetchone()
+    5:         if not purchase: raise MallError(403,'购买并支付该商品后才能评价，退款中的订单不可评价')
+               # Hidden reviews stay hidden when edited, so moderation cannot be bypassed.
+    6:         connection.execute('''INSERT INTO reviews(user_id,product_id,order_id,rating,content) VALUES (?,?,?,?,?)
+                   ON CONFLICT(user_id,product_id) DO UPDATE SET rating=excluded.rating,content=excluded.content,
+    3:             order_id=excluded.order_id,updated_at=strftime('%Y-%m-%dT%H:%M:%SZ','now')''',(user['id'],product_id,purchase['id'],payload.rating,payload.content))
+    3:     return {'message':'评价已保存'}
+       
+       
+    1: def write_comment(product_id,payload,user,connection):
+    3:     logic.product(product_id,connection)
+    3:     cid=connection.execute('INSERT INTO comments(user_id,product_id,content) VALUES (?,?,?)',(user['id'],product_id,payload.content)).lastrowid
+    3:     return {'id':cid,'message':'评论已发布'}
+       
+       
+    1: def admin_discussions(user,connection,page=1,page_size=10,kind='comments'):
+    3:     require_admin(user)
+    3:     table='reviews' if kind=='reviews' else 'comments'
+    3:     where, args = scope_clause(user, 'p.store_id')
+    3:     return page_data(connection,f'SELECT r.*,u.name,p.name AS product_name FROM {table} r JOIN users u ON u.id=r.user_id JOIN products p ON p.id=r.product_id WHERE ' + where + ' ORDER BY r.id DESC',args,page,page_size)
+       
+       
+    1: def admin_visibility(comment_id,payload,user,connection,kind='comments'):
+    5:     require_admin(user)
+    5:     table='reviews' if kind=='reviews' else 'comments'
+    5:     where, args = scope_clause(user)
+    5:     result=connection.execute(f'UPDATE {table} SET is_visible=? WHERE id=? AND product_id IN (SELECT id FROM products WHERE ' + where + ')',(payload.is_visible,comment_id,*args))
+    5:     if not result.rowcount: raise MallError(404,'评论或评价不存在')
+    3:     return {'message':'显示状态已更新'}
+       
+       
+    1: def conversation(user,connection,store_id=1):
+   41:     row=connection.execute('SELECT * FROM conversations WHERE user_id=? AND store_id=?',(user['id'],store_id)).fetchone()
+   41:     return dict(row) if row else None
+       
+       
+    1: def thread(conversation_id,connection,after_id=0,before_id=0,page_size=50):
+   14:     args=[conversation_id]
+   14:     where='conversation_id=?'
+   14:     if after_id: where+=' AND id>?';args.append(after_id)
+   14:     if before_id: where+=' AND id<?';args.append(before_id)
+   14:     direction='ASC' if after_id else 'DESC'
+   38:     rows=[dict(r) for r in connection.execute(f'SELECT id,content,sender_side,created_at FROM support_messages WHERE {where} ORDER BY id {direction} LIMIT ?',(*args,page_size))]
+   14:     if not after_id: rows.reverse()
+   14:     return rows
+       
+       
+    1: def support_conversations(user,connection):
+   12:     rows=[dict(r) for r in connection.execute("""SELECT c.id,c.store_id,s.name AS store_name,s.is_active AS store_active,
+               (SELECT COUNT(*) FROM support_messages m WHERE m.conversation_id=c.id AND m.sender_side='staff' AND m.id>c.customer_read_id) AS unread,
+               (SELECT content FROM support_messages m WHERE m.conversation_id=c.id ORDER BY m.id DESC LIMIT 1) AS last_message,
+               (SELECT MAX(id) FROM support_messages m WHERE m.conversation_id=c.id) AS last_id
+    3:         FROM conversations c JOIN stores s ON s.id=c.store_id WHERE c.user_id=? ORDER BY last_id DESC""",(user['id'],))]
+   12:     return {'items':rows,'unread':sum(r['unread'] for r in rows),'notify_support':settings(user,connection)['notify_support']}
+       
+       
+    1: def support_messages(user,connection,after_id=0,before_id=0,page_size=50,store_id=1):
+   16:     from app.shops import store_row
+   16:     store=store_row(store_id,connection)
+   16:     c=conversation(user,connection,store_id)
+   16:     unread=connection.execute("SELECT COUNT(*) FROM support_messages WHERE conversation_id=? AND sender_side='staff' AND id>?",(c['id'],c['customer_read_id'])).fetchone()[0] if c else 0
+   32:     return {'conversation_id':c['id'] if c else None,'store_id':store_id,'store_name':store['name'],
+   16:         'store_active':store['is_active'],'items':thread(c['id'],connection,after_id,before_id,page_size) if c else [],
+   16:         'unread':unread,'notify_support':settings(user,connection)['notify_support']}
+       
+       
+    1: def send_message(c,payload,user,connection,side):
+   22:     existing=connection.execute('SELECT * FROM support_messages WHERE conversation_id=? AND sender_id=? AND sender_side=? AND client_message_id=?',(c['id'],user['id'],side,payload.client_message_id)).fetchone()
+   22:     if existing:
+    3:         if existing['content']!=payload.content: raise MallError(409,'消息编号已用于其他内容')
+    2:         return {'id':existing['id'],'message':'消息已发送'}
+   19:     mid=connection.execute('INSERT INTO support_messages(conversation_id,sender_id,sender_side,content,client_message_id) VALUES (?,?,?,?,?)',(c['id'],user['id'],side,payload.content,payload.client_message_id)).lastrowid
+   19:     return {'id':mid,'message':'消息已发送'}
+       
+       
+    1: def support_send(payload,user,connection):
+   18:     from app.shops import store_row
+   36:     with transaction(connection):
+   18:         store_row(payload.store_id,connection,active=True)
+   17:         connection.execute('INSERT OR IGNORE INTO conversations(user_id,store_id) VALUES (?,?)',(user['id'],payload.store_id))
+   17:         return send_message(conversation(user,connection,payload.store_id),payload,user,connection,'customer')
+       
+       
+    1: def mark_read(c,payload,connection,side):
+    9:     if payload.last_message_id and not connection.execute('SELECT 1 FROM support_messages WHERE id=? AND conversation_id=?',(payload.last_message_id,c['id'])).fetchone(): raise MallError(422,'已读消息不属于当前会话')
+    6:     column='customer_read_id' if side=='customer' else 'staff_read_id'
+    6:     connection.execute(f'UPDATE conversations SET {column}=MAX({column},?) WHERE id=?',(payload.last_message_id,c['id']))
+    6:     return {'message':'已读状态已更新'}
+       
+       
+    1: def support_read(payload,user,connection):
+   16:     with transaction(connection):
+    8:         c=conversation(user,connection,payload.store_id)
+    8:         if not c:
+>>>>>>             if payload.last_message_id: raise MallError(422,'会话不存在')
+>>>>>>             return {'message':'暂无消息'}
+    8:         return mark_read(c,payload,connection,'customer')
+       
+       
+    1: def admin_conversation(conversation_id,user,connection):
+   10:     require_admin(user)
+   10:     where, args = scope_clause(user)
+   10:     row=connection.execute('SELECT * FROM conversations WHERE id=? AND ' + where,(conversation_id,*args)).fetchone()
+   10:     if not row: raise MallError(404,'会话不存在')
+    7:     return dict(row)
+       
+       
+    1: def admin_support(user,connection,page=1,page_size=10,store_id=None):
+    6:     store_id = store_scope(user, store_id)
+    5:     where=' WHERE c.store_id=?' if store_id is not None else ''
+    5:     args=(store_id,) if store_id is not None else ()
+   20:     result=page_data(connection,'''SELECT c.id,u.name,u.phone,c.store_id,s.name AS store_name,
+               (SELECT content FROM support_messages WHERE conversation_id=c.id ORDER BY id DESC LIMIT 1) AS last_message,
+               (SELECT COUNT(*) FROM support_messages WHERE conversation_id=c.id AND sender_side='customer' AND id>c.staff_read_id) AS unread,
+               (SELECT MAX(id) FROM support_messages WHERE conversation_id=c.id) AS last_id
+   15:         FROM conversations c JOIN users u ON u.id=c.user_id JOIN stores s ON s.id=c.store_id'''+where+' ORDER BY last_id DESC',args,page,page_size)
+    5:     result['unread_total']=connection.execute("SELECT COUNT(*) FROM support_messages m JOIN conversations c ON c.id=m.conversation_id WHERE m.sender_side='customer' AND m.id>c.staff_read_id"+(' AND c.store_id=?' if store_id is not None else ''),args).fetchone()[0]
+    5:     return result
+       
+       
+    1: def admin_support_messages(conversation_id,user,connection,after_id=0,before_id=0,page_size=50):
+    2:     admin_conversation(conversation_id,user,connection)
+    1:     return {'items':thread(conversation_id,connection,after_id,before_id,page_size)}
+       
+       
+    1: def admin_support_send(conversation_id,payload,user,connection):
+    7:     with transaction(connection): return send_message(admin_conversation(conversation_id,user,connection),payload,user,connection,'staff')
+       
+       
+    1: def admin_support_read(conversation_id,payload,user,connection):
+    3:     with transaction(connection): return mark_read(admin_conversation(conversation_id,user,connection),payload,connection,'staff')

@@ -1,0 +1,25 @@
+    1: """Load local settings without overriding variables exported by the user."""
+    1: import os
+    1: from pathlib import Path
+    1: import re
+       
+    1: ROOT = Path(__file__).resolve().parent.parent
+       
+       
+    1: def load_environment(path=None):
+    1:     file = Path(path) if path else ROOT / '.env'
+    1:     if not file.is_file():
+>>>>>>         return
+    3:     for line in file.read_text(encoding='utf-8').splitlines():
+    2:         line = line.strip()
+    2:         if not line or line.startswith('#'):
+>>>>>>             continue
+    2:         if line.startswith('export '):
+>>>>>>             line = line[7:].strip()
+    2:         key, separator, value = line.partition('=')
+    2:         key, value = key.strip(), value.strip()
+    2:         if not separator or not re.fullmatch(r'[A-Z][A-Z0-9_]*', key):
+>>>>>>             raise ValueError('.env配置格式不正确，请使用KEY=value')
+    2:         if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+    1:             value = value[1:-1]
+    2:         os.environ.setdefault(key, value)

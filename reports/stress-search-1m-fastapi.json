@@ -1,0 +1,135 @@
+{
+  "timestamp_utc": "2026-11-19T03:38:31.665566+00:00",
+  "mode": "in-process ASGI (FastAPI) + SQLite",
+  "catalog_cache": "disabled (REDIS_URL empty)",
+  "environment": {
+    "python": "3.12.15",
+    "os": "macOS-15.7.7-arm64-arm-64bit",
+    "cpu_count": 8
+  },
+  "catalog": {
+    "products": 1000000,
+    "keyword_group": 1200,
+    "keyword": "耳机",
+    "categories": {
+      "家居生活": 166468,
+      "数码科技": 167666,
+      "服饰箱包": 166466,
+      "美妆个护": 166467,
+      "运动户外": 166467,
+      "食品饮料": 166466
+    }
+  },
+  "scenarios": [
+    {
+      "name": "唯一商品搜索",
+      "path": "/api/products?q=星陨限定礼盒",
+      "description": "1000000 件商品中按名称定位唯一商品（q=星陨限定礼盒，命中 1 件）",
+      "levels": [
+        {
+          "concurrency": 1,
+          "requests": 20,
+          "failures": 0,
+          "failure_samples": [],
+          "seconds": 19.967,
+          "rps": 1.0,
+          "latency": {
+            "min_ms": 958.119,
+            "mean_ms": 998.306,
+            "p50_ms": 992.756,
+            "p95_ms": 1040.694,
+            "p99_ms": 1083.17,
+            "max_ms": 1083.17
+          }
+        },
+        {
+          "concurrency": 16,
+          "requests": 20,
+          "failures": 0,
+          "failure_samples": [],
+          "seconds": 10.315,
+          "rps": 1.9,
+          "latency": {
+            "min_ms": 1943.531,
+            "mean_ms": 7226.032,
+            "p50_ms": 8486.082,
+            "p95_ms": 8791.761,
+            "p99_ms": 8794.853,
+            "max_ms": 8794.853
+          }
+        },
+        {
+          "concurrency": 64,
+          "requests": 20,
+          "failures": 0,
+          "failure_samples": [],
+          "seconds": 11.869,
+          "rps": 1.7,
+          "latency": {
+            "min_ms": 11375.569,
+            "mean_ms": 11730.259,
+            "p50_ms": 11750.878,
+            "p95_ms": 11855.993,
+            "p99_ms": 11868.733,
+            "max_ms": 11868.733
+          }
+        }
+      ]
+    },
+    {
+      "name": "无关键词浏览（对照）",
+      "path": "/api/products",
+      "description": "不带关键词的目录浏览，作为搜索开销对照",
+      "levels": [
+        {
+          "concurrency": 1,
+          "requests": 20,
+          "failures": 0,
+          "failure_samples": [],
+          "seconds": 0.635,
+          "rps": 31.5,
+          "latency": {
+            "min_ms": 28.525,
+            "mean_ms": 31.66,
+            "p50_ms": 30.602,
+            "p95_ms": 36.501,
+            "p99_ms": 36.95,
+            "max_ms": 36.95
+          }
+        },
+        {
+          "concurrency": 16,
+          "requests": 20,
+          "failures": 0,
+          "failure_samples": [],
+          "seconds": 0.221,
+          "rps": 90.6,
+          "latency": {
+            "min_ms": 34.99,
+            "mean_ms": 153.155,
+            "p50_ms": 177.073,
+            "p95_ms": 190.768,
+            "p99_ms": 191.504,
+            "max_ms": 191.504
+          }
+        },
+        {
+          "concurrency": 64,
+          "requests": 20,
+          "failures": 0,
+          "failure_samples": [],
+          "seconds": 0.299,
+          "rps": 66.9,
+          "latency": {
+            "min_ms": 248.857,
+            "mean_ms": 275.219,
+            "p50_ms": 276.012,
+            "p95_ms": 295.914,
+            "p99_ms": 297.427,
+            "max_ms": 297.427
+          }
+        }
+      ]
+    }
+  ]
+}

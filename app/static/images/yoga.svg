@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 360"><defs>
+<linearGradient id="purple" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#b6adc9"/><stop offset=".48" stop-color="#8d829f"/><stop offset="1" stop-color="#5c506c"/></linearGradient>
+<linearGradient id="light" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff"/><stop offset=".6" stop-color="#e8e5e4"/><stop offset="1" stop-color="#c4c0bb"/></linearGradient>
+<linearGradient id="sand" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#d5bf9f"/><stop offset=".6" stop-color="#b79d7a"/><stop offset="1" stop-color="#8e7458"/></linearGradient>
+<linearGradient id="green" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#9cab98"/><stop offset=".6" stop-color="#738b77"/><stop offset="1" stop-color="#4c6853"/></linearGradient>
+<linearGradient id="blue" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#91a5bc"/><stop offset=".6" stop-color="#637f9e"/><stop offset="1" stop-color="#3e5975"/></linearGradient>
+<linearGradient id="dark" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#5e5752"/><stop offset="1" stop-color="#292624"/></linearGradient>
+<radialGradient id="wax"><stop stop-color="#fff5dd"/><stop offset="1" stop-color="#e0c7a2"/></radialGradient>
+<filter id="shadow" x="-50%" y="-50%" width="200%" height="200%"><feDropShadow dx="0" dy="12" stdDeviation="9" flood-color="#30253e" flood-opacity=".14"/></filter>
+<pattern id="mesh" width="5" height="5" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r=".8" fill="#293f55" opacity=".35"/></pattern>
+</defs><g transform="rotate(-18 180 190)" filter="url(#shadow)"><path d="M86 150h185v132H86Z" fill="url(#purple)"/><ellipse cx="271" cy="216" rx="29" ry="66" fill="#716583"/><ellipse cx="87" cy="216" rx="29" ry="66" fill="#aca0bc"/><ellipse cx="87" cy="216" rx="21" ry="53" fill="#81718f"/><ellipse cx="87" cy="216" rx="14" ry="39" fill="#b5a6c4"/><ellipse cx="87" cy="216" rx="8" ry="24" fill="#776685"/><path d="M119 159h119M119 166h119M119 174h119M119 181h119M119 189h119M119 196h119M119 204h119M119 211h119M119 219h119M119 226h119M119 234h119M119 241h119M119 249h119M119 256h119M119 264h119" stroke="#6a5b7a" stroke-width="1" opacity=".18"/><path d="M162 153v126h28V153" fill="#d9ccdf" opacity=".8"/><rect x="165" y="201" width="22" height="23" rx="4" fill="#645773"/><rect x="169" y="206" width="14" height="13" rx="2" fill="#b5a7c4"/></g></svg>

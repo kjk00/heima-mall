@@ -1,0 +1,271 @@
+    1: import sqlite3
+    1: import secrets
+    1: import os
+    1: from contextlib import contextmanager
+    1: from pathlib import Path
+       
+    1: SCHEMA = """
+       CREATE TABLE IF NOT EXISTS catalog_cache_state (
+           id INTEGER PRIMARY KEY CHECK(id=1), generation TEXT NOT NULL,
+           revision INTEGER NOT NULL DEFAULT 0
+       );
+       CREATE TABLE IF NOT EXISTS stores (
+           id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, description TEXT NOT NULL DEFAULT '',
+           phone TEXT NOT NULL DEFAULT '', is_active INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0,1)),
+           shipping_fee INTEGER NOT NULL DEFAULT 1000 CHECK(shipping_fee>=0),
+           free_shipping_threshold INTEGER NOT NULL DEFAULT 19900 CHECK(free_shipping_threshold>=0),
+           version INTEGER NOT NULL DEFAULT 1,
+           created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+       );
+       CREATE TABLE IF NOT EXISTS users (
+           id INTEGER PRIMARY KEY, phone TEXT NOT NULL UNIQUE,
+           name TEXT NOT NULL, password_hash TEXT NOT NULL,
+           created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+       );
+       CREATE TABLE IF NOT EXISTS sessions (
+           token_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
+           expires_at INTEGER NOT NULL
+       );
+       CREATE INDEX IF NOT EXISTS sessions_user ON sessions(user_id);
+       CREATE TABLE IF NOT EXISTS products (
+           id INTEGER PRIMARY KEY, name TEXT NOT NULL, subtitle TEXT NOT NULL,
+           category TEXT NOT NULL, price INTEGER NOT NULL CHECK(price >= 0),
+           original_price INTEGER NOT NULL, stock INTEGER NOT NULL CHECK(stock >= 0),
+           image TEXT NOT NULL, badge TEXT NOT NULL DEFAULT '',
+           color TEXT NOT NULL, description TEXT NOT NULL, sales INTEGER NOT NULL DEFAULT 0
+       );
+       CREATE TABLE IF NOT EXISTS cart_items (
+           user_id INTEGER NOT NULL REFERENCES users(id),
+           product_id INTEGER NOT NULL REFERENCES products(id),
+           quantity INTEGER NOT NULL CHECK(quantity BETWEEN 1 AND 99),
+           PRIMARY KEY(user_id, product_id)
+       );
+       CREATE TABLE IF NOT EXISTS orders (
+           id TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
+           status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','paid','cancelled')),
+           subtotal INTEGER NOT NULL, shipping_fee INTEGER NOT NULL, total INTEGER NOT NULL,
+           recipient TEXT NOT NULL, phone TEXT NOT NULL, address TEXT NOT NULL,
+           idempotency_key TEXT NOT NULL,
+           created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+           UNIQUE(user_id, idempotency_key)
+       );
+       CREATE INDEX IF NOT EXISTS orders_user ON orders(user_id, created_at);
+       CREATE TABLE IF NOT EXISTS order_items (
+           id INTEGER PRIMARY KEY, order_id TEXT NOT NULL REFERENCES orders(id),
+           product_id INTEGER NOT NULL REFERENCES products(id),
+           name TEXT NOT NULL, image TEXT NOT NULL,
+           price INTEGER NOT NULL, quantity INTEGER NOT NULL
+       );
+       CREATE TABLE IF NOT EXISTS addresses (
+           id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
+           recipient TEXT NOT NULL, phone TEXT NOT NULL, address TEXT NOT NULL,
+           label TEXT NOT NULL DEFAULT '', is_default INTEGER NOT NULL DEFAULT 0,
+           created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+       );
+       CREATE UNIQUE INDEX IF NOT EXISTS address_default ON addresses(user_id) WHERE is_default=1;
+       CREATE TABLE IF NOT EXISTS coupons (
+           id INTEGER PRIMARY KEY, code TEXT NOT NULL UNIQUE, name TEXT NOT NULL,
+           kind TEXT NOT NULL CHECK(kind IN ('amount','rate')), value INTEGER NOT NULL,
+           threshold INTEGER NOT NULL DEFAULT 0, max_discount INTEGER NOT NULL DEFAULT 0,
+           claim_limit INTEGER NOT NULL DEFAULT 200, starts_at TEXT NOT NULL,
+           expires_at TEXT NOT NULL, is_active INTEGER NOT NULL DEFAULT 1
+       );
+       CREATE TABLE IF NOT EXISTS user_coupons (
+           user_id INTEGER NOT NULL REFERENCES users(id), coupon_id INTEGER NOT NULL REFERENCES coupons(id),
+           used_order_id TEXT REFERENCES orders(id),
+           claimed_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+           PRIMARY KEY(user_id,coupon_id)
+       );
+       CREATE TABLE IF NOT EXISTS refunds (
+           id INTEGER PRIMARY KEY, order_id TEXT NOT NULL REFERENCES orders(id),
+           user_id INTEGER NOT NULL REFERENCES users(id), reason TEXT NOT NULL, amount INTEGER NOT NULL,
+           status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected')),
+           idempotency_key TEXT NOT NULL, note TEXT NOT NULL DEFAULT '', restocked INTEGER NOT NULL DEFAULT 0,
+           processed_by INTEGER REFERENCES users(id), processed_at TEXT,
+           created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+           UNIQUE(user_id,idempotency_key)
+       );
+       CREATE UNIQUE INDEX IF NOT EXISTS refund_open_order ON refunds(order_id) WHERE status IN ('pending','approved');
+       CREATE TABLE IF NOT EXISTS tracking_events (
+           id INTEGER PRIMARY KEY, order_id TEXT NOT NULL REFERENCES orders(id),
+           stage TEXT NOT NULL, note TEXT NOT NULL,
+           created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+       );
+       CREATE TABLE IF NOT EXISTS browsing_history (
+           user_id INTEGER NOT NULL REFERENCES users(id), product_id INTEGER NOT NULL REFERENCES products(id),
+           viewed_at TEXT NOT NULL, sort_key INTEGER NOT NULL, PRIMARY KEY(user_id,product_id)
+       );
+       CREATE TABLE IF NOT EXISTS reviews (
+           id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
+           product_id INTEGER NOT NULL REFERENCES products(id), order_id TEXT NOT NULL REFERENCES orders(id),
+           rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5), content TEXT NOT NULL,
+           is_visible INTEGER NOT NULL DEFAULT 1,
+           created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+           updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+           UNIQUE(user_id,product_id)
+       );
+       CREATE TABLE IF NOT EXISTS comments (
+           id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
+           product_id INTEGER NOT NULL REFERENCES products(id), content TEXT NOT NULL,
+           is_visible INTEGER NOT NULL DEFAULT 1,
+           created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+       );
+       CREATE TABLE IF NOT EXISTS conversations (
+           id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
+           store_id INTEGER NOT NULL REFERENCES stores(id),
+           customer_read_id INTEGER NOT NULL DEFAULT 0, staff_read_id INTEGER NOT NULL DEFAULT 0,
+           created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+           UNIQUE(user_id,store_id)
+       );
+       CREATE TABLE IF NOT EXISTS support_messages (
+           id INTEGER PRIMARY KEY, conversation_id INTEGER NOT NULL REFERENCES conversations(id),
+           sender_id INTEGER NOT NULL REFERENCES users(id), sender_side TEXT NOT NULL CHECK(sender_side IN ('customer','staff')),
+           content TEXT NOT NULL, client_message_id TEXT NOT NULL,
+           created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+           UNIQUE(conversation_id,sender_id,sender_side,client_message_id)
+       );
+       CREATE INDEX IF NOT EXISTS support_thread ON support_messages(conversation_id,id);
+       CREATE INDEX IF NOT EXISTS review_product ON reviews(product_id,is_visible,id);
+       CREATE INDEX IF NOT EXISTS comment_product ON comments(product_id,is_visible,id);
+       """
+       
+       # Additive migrations preserve existing accounts, carts, orders, and inventory.
+    1: MIGRATIONS = {
+    1:     'users': {
+    1:         'role': "TEXT NOT NULL DEFAULT 'customer' CHECK(role IN ('customer','admin'))",
+    1:         'is_active': 'INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0,1))',
+    1:         'notify_support': 'INTEGER NOT NULL DEFAULT 1 CHECK(notify_support IN (0,1))',
+    1:         'store_id': 'INTEGER REFERENCES stores(id)',
+    1:         'is_super_admin': 'INTEGER NOT NULL DEFAULT 0 CHECK(is_super_admin IN (0,1))',
+           },
+    1:     'products': {
+    1:         'is_active': 'INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0,1))',
+    1:         'version': 'INTEGER NOT NULL DEFAULT 1',
+    1:         'store_id': 'INTEGER REFERENCES stores(id)',
+           },
+    1:     'orders': {
+    1:         'fulfillment_status': "TEXT NOT NULL DEFAULT 'unfulfilled' CHECK(fulfillment_status IN ('unfulfilled','shipped','completed'))",
+    1:         'carrier': "TEXT NOT NULL DEFAULT ''",
+    1:         'tracking_no': "TEXT NOT NULL DEFAULT ''",
+    1:         'shipped_at': 'TEXT',
+    1:         'completed_at': 'TEXT',
+    1:         'delivery_stage': "TEXT NOT NULL DEFAULT 'awaiting'",
+    1:         'discount': 'INTEGER NOT NULL DEFAULT 0',
+    1:         'coupon_id': 'INTEGER REFERENCES coupons(id)',
+    1:         'store_id': 'INTEGER REFERENCES stores(id)',
+    1:         'store_name': "TEXT NOT NULL DEFAULT '黑马自营店'",
+           },
+    1:     'conversations': {'store_id': 'INTEGER REFERENCES stores(id)'},
+    1:     'coupons': {'store_id': 'INTEGER REFERENCES stores(id)'},
+       }
+       
+       
+    2: class Database:
+    1:     def __new__(cls, path=None):
+  106:         if path is None and os.getenv('DATABASE_BACKEND', 'mysql') == 'mysql':
+    1:             from app.mysql import MySQLDatabase
+    1:             return MySQLDatabase()
+  105:         return super().__new__(cls)
+       
+    1:     def __init__(self, path=None):
+  105:         backend = os.getenv('DATABASE_BACKEND', 'mysql')
+  105:         if path is None and backend not in {'mysql', 'sqlite'}:
+    1:             raise ValueError('DATABASE_BACKEND必须为mysql或sqlite')
+  104:         self.path = Path(path or os.getenv('DATABASE_PATH', str(Path(__file__).resolve().parent.parent / 'data/mall.db')))
+  104:         self.backend = 'sqlite'
+       
+    1:     def connect(self):
+ 1344:         connection = sqlite3.connect(self.path, timeout=10, isolation_level=None)
+ 1344:         connection.row_factory = sqlite3.Row
+ 1344:         connection.execute("PRAGMA foreign_keys = ON")
+ 1344:         return connection
+       
+    1:     def initialize(self):
+  102:         from app.seed import PRODUCTS
+       
+  102:         self.path.parent.mkdir(parents=True, exist_ok=True)
+  204:         with self.connection() as connection:
+  102:             connection.execute("PRAGMA journal_mode = WAL")
+  102:             connection.executescript(SCHEMA)
+  713:             old_conversations = 'store_id' not in {r['name'] for r in connection.execute('PRAGMA table_info(conversations)')}
+                   # Rebuild the legacy UNIQUE(user_id) table without changing message IDs or references.
+  102:             if old_conversations:
+    1:                 connection.execute('PRAGMA foreign_keys=OFF')
+  204:             with transaction(connection):
+  102:                 connection.execute('INSERT OR IGNORE INTO catalog_cache_state(id,generation) VALUES (1,?)', (secrets.token_hex(16),))
+  306:                 for table in ('products', 'stores'):
+  816:                     for event in ('INSERT', 'UPDATE', 'DELETE'):
+ 1224:                         connection.execute(f'''CREATE TRIGGER IF NOT EXISTS catalog_cache_{table}_{event.lower()}
+  612:                             AFTER {event} ON {table} BEGIN
+                                   UPDATE catalog_cache_state SET revision=revision+1 WHERE id=1; END''')
+  102:                 connection.executemany('INSERT OR IGNORE INTO stores(id,name,description) VALUES (?,?,?)',[
+                           (1,'黑马自营店','商城自营与历史订单服务'),(2,'黑马数码旗舰店','耳机、音箱与数码好物'),
+                           (3,'日常家居生活馆','家居与生活用品'),(4,'城市穿搭精品店','服饰、箱包与配饰'),
+                           (5,'轻运动户外店','运动与户外用品'),(6,'清新美妆个护店','美妆与个人护理'),
+                           (7,'原味食品咖啡店','食品、饮料与咖啡')])
+  612:                 for table, additions in MIGRATIONS.items():
+ 5230:                     columns = {row['name'] for row in connection.execute(f'PRAGMA table_info({table})')}
+ 2550:                     for name, definition in additions.items():
+ 2040:                         if name not in columns:
+ 1808:                             connection.execute(f'ALTER TABLE {table} ADD COLUMN {name} {definition}')
+                           # Existing administrators managed the entire platform before store permissions.
+  510:                     if table == 'users' and 'is_super_admin' not in columns:
+   96:                         connection.execute("UPDATE users SET is_super_admin=1 WHERE role='admin'")
+  204:                 connection.executemany(
+  102:                     """INSERT OR IGNORE INTO products
+                           (id,name,subtitle,category,price,original_price,stock,image,badge,color,description,sales)
+  102:                     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""", PRODUCTS
+                       )
+                       # Assign only unassigned products; later administrator edits survive restarts.
+  102:                 connection.execute("""UPDATE products SET store_id=CASE category
+                           WHEN '数码科技' THEN 2 WHEN '家居生活' THEN 3 WHEN '服饰箱包' THEN 4
+                           WHEN '运动户外' THEN 5 WHEN '美妆个护' THEN 6 WHEN '食品饮料' THEN 7 ELSE 1 END
+                           WHERE store_id IS NULL""")
+  102:                 connection.execute('UPDATE orders SET store_id=1 WHERE store_id IS NULL')
+  102:                 connection.execute('UPDATE conversations SET store_id=1 WHERE store_id IS NULL')
+  102:                 if old_conversations:
+    1:                     connection.execute("""CREATE TABLE conversations_new (
+                               id INTEGER PRIMARY KEY,user_id INTEGER NOT NULL REFERENCES users(id),
+                               store_id INTEGER NOT NULL REFERENCES stores(id),
+                               customer_read_id INTEGER NOT NULL DEFAULT 0,staff_read_id INTEGER NOT NULL DEFAULT 0,
+                               created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+                               UNIQUE(user_id,store_id))""")
+    1:                     connection.execute('INSERT INTO conversations_new SELECT id,user_id,store_id,customer_read_id,staff_read_id,created_at FROM conversations')
+    1:                     connection.execute('DROP TABLE conversations')
+    1:                     connection.execute('ALTER TABLE conversations_new RENAME TO conversations')
+  102:                 connection.execute('CREATE INDEX IF NOT EXISTS products_store ON products(store_id,is_active,id)')
+  102:                 connection.execute('CREATE INDEX IF NOT EXISTS orders_store ON orders(store_id,created_at)')
+  204:                 connection.executemany("""INSERT OR IGNORE INTO coupons
+                           (code,name,kind,value,threshold,max_discount,claim_limit,starts_at,expires_at)
+                           VALUES (?,?,?,?,?,?,?,'2020-01-01T00:00:00Z','2100-01-01T00:00:00Z')""",
+  204:                     [('WELCOME10','新人满99减10','amount',1000,9900,0,200),
+  102:                      ('LIFE90','生活好物9折券','rate',90,19900,5000,200)])
+  102:                 connection.execute("UPDATE orders SET delivery_stage='delivered' WHERE fulfillment_status='completed' AND delivery_stage='awaiting'")
+  102:                 connection.execute("UPDATE orders SET delivery_stage='dispatched' WHERE fulfillment_status='shipped' AND delivery_stage='awaiting'")
+  102:                 if connection.execute('PRAGMA foreign_key_check').fetchone():
+>>>>>>                     raise sqlite3.IntegrityError('店铺迁移存在无效关联')
+  102:             if old_conversations:
+    1:                 connection.execute('PRAGMA foreign_keys=ON')
+       
+    2:     @contextmanager
+    2:     def connection(self):
+ 1344:         connection = self.connect()
+ 1344:         try:
+ 1344:             yield connection
+               finally:
+ 1344:             connection.close()
+       
+       
+    2: @contextmanager
+    2: def transaction(connection):
+  674:     if hasattr(connection, 'begin_transaction'):
+    1:         connection.begin_transaction()
+           else:
+  673:         connection.execute("BEGIN IMMEDIATE")
+  674:     try:
+  674:         yield
+  592:         connection.execute("COMMIT")
+   82:     except BaseException:
+   82:         connection.execute("ROLLBACK")
+   82:         raise
+       

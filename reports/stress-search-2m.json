@@ -1,0 +1,135 @@
+{
+  "timestamp_utc": "2026-11-19T03:43:58.219040+00:00",
+  "mode": "in-process WSGI + SQLite",
+  "catalog_cache": "disabled (REDIS_URL empty)",
+  "environment": {
+    "python": "3.15.0",
+    "os": "macOS-15.7.7-arm64-arm-64bit-Mach-O",
+    "cpu_count": 8
+  },
+  "catalog": {
+    "products": 2000000,
+    "keyword_group": 1200,
+    "keyword": "耳机",
+    "categories": {
+      "家居生活": 333134,
+      "数码科技": 334333,
+      "服饰箱包": 333133,
+      "美妆个护": 333133,
+      "运动户外": 333134,
+      "食品饮料": 333133
+    }
+  },
+  "scenarios": [
+    {
+      "name": "唯一商品搜索",
+      "path": "/api/products?q=星陨限定礼盒",
+      "description": "2000000 件商品中按名称定位唯一商品（q=星陨限定礼盒，命中 1 件）",
+      "levels": [
+        {
+          "concurrency": 1,
+          "requests": 10,
+          "failures": 0,
+          "failure_samples": [],
+          "seconds": 21.863,
+          "rps": 0.5,
+          "latency": {
+            "min_ms": 2102.598,
+            "mean_ms": 2186.19,
+            "p50_ms": 2154.832,
+            "p95_ms": 2346.862,
+            "p99_ms": 2346.862,
+            "max_ms": 2346.862
+          }
+        },
+        {
+          "concurrency": 16,
+          "requests": 10,
+          "failures": 0,
+          "failure_samples": [],
+          "seconds": 50.969,
+          "rps": 0.2,
+          "latency": {
+            "min_ms": 50715.176,
+            "mean_ms": 50900.37,
+            "p50_ms": 50931.732,
+            "p95_ms": 50964.638,
+            "p99_ms": 50964.638,
+            "max_ms": 50964.638
+          }
+        },
+        {
+          "concurrency": 64,
+          "requests": 10,
+          "failures": 0,
+          "failure_samples": [],
+          "seconds": 50.917,
+          "rps": 0.2,
+          "latency": {
+            "min_ms": 50819.517,
+            "mean_ms": 50884.112,
+            "p50_ms": 50892.713,
+            "p95_ms": 50914.899,
+            "p99_ms": 50914.899,
+            "max_ms": 50914.899
+          }
+        }
+      ]
+    },
+    {
+      "name": "同类关键词搜索",
+      "path": "/api/products?q=耳机",
+      "description": "关键词搜索同类商品（q=耳机，命中 1200 件，取第 1 页）",
+      "levels": [
+        {
+          "concurrency": 1,
+          "requests": 10,
+          "failures": 0,
+          "failure_samples": [],
+          "seconds": 11.041,
+          "rps": 0.9,
+          "latency": {
+            "min_ms": 1056.205,
+            "mean_ms": 1104.04,
+            "p50_ms": 1082.867,
+            "p95_ms": 1219.509,
+            "p99_ms": 1219.509,
+            "max_ms": 1219.509
+          }
+        },
+        {
+          "concurrency": 16,
+          "requests": 10,
+          "failures": 0,
+          "failure_samples": [],
+          "seconds": 23.59,
+          "rps": 0.4,
+          "latency": {
+            "min_ms": 23506.189,
+            "mean_ms": 23543.894,
+            "p50_ms": 23543.301,
+            "p95_ms": 23586.176,
+            "p99_ms": 23586.176,
+            "max_ms": 23586.176
+          }
+        },
+        {
+          "concurrency": 64,
+          "requests": 10,
+          "failures": 0,
+          "failure_samples": [],
+          "seconds": 25.427,
+          "rps": 0.4,
+          "latency": {
+            "min_ms": 25344.211,
+            "mean_ms": 25392.317,
+            "p50_ms": 25393.337,
+            "p95_ms": 25425.741,
+            "p99_ms": 25425.741,
+            "max_ms": 25425.741
+          }
+        }
+      ]
+    }
+  ]
+}

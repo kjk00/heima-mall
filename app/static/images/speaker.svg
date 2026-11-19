@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 360"><defs>
+<linearGradient id="purple" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#b6adc9"/><stop offset=".48" stop-color="#8d829f"/><stop offset="1" stop-color="#5c506c"/></linearGradient>
+<linearGradient id="light" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff"/><stop offset=".6" stop-color="#e8e5e4"/><stop offset="1" stop-color="#c4c0bb"/></linearGradient>
+<linearGradient id="sand" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#d5bf9f"/><stop offset=".6" stop-color="#b79d7a"/><stop offset="1" stop-color="#8e7458"/></linearGradient>
+<linearGradient id="green" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#9cab98"/><stop offset=".6" stop-color="#738b77"/><stop offset="1" stop-color="#4c6853"/></linearGradient>
+<linearGradient id="blue" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#91a5bc"/><stop offset=".6" stop-color="#637f9e"/><stop offset="1" stop-color="#3e5975"/></linearGradient>
+<linearGradient id="dark" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#5e5752"/><stop offset="1" stop-color="#292624"/></linearGradient>
+<radialGradient id="wax"><stop stop-color="#fff5dd"/><stop offset="1" stop-color="#e0c7a2"/></radialGradient>
+<filter id="shadow" x="-50%" y="-50%" width="200%" height="200%"><feDropShadow dx="0" dy="12" stdDeviation="9" flood-color="#30253e" flood-opacity=".14"/></filter>
+<pattern id="mesh" width="5" height="5" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r=".8" fill="#293f55" opacity=".35"/></pattern>
+</defs><g transform="rotate(-12 180 210)" filter="url(#shadow)"><path d="M235 129q29-31 39 2t-27 36" stroke="#5b7190" stroke-width="9" fill="none"/><rect x="84" y="119" width="190" height="158" rx="41" fill="url(#blue)"/><rect x="90" y="127" width="179" height="143" rx="37" fill="url(#mesh)"/><path d="M111 130q68-16 137 2" stroke="#b4c1cf" stroke-width="2" fill="none" opacity=".4"/><rect x="148" y="181" width="67" height="25" rx="5" fill="#d5dde4"/><text x="181" y="197" text-anchor="middle" fill="#48617a" font-size="10" font-family="sans-serif" letter-spacing="2">POCKET</text><path d="M140 241h6m29 0h6m29 0h6" stroke="#bbc9d6" stroke-width="3" stroke-linecap="round"/></g></svg>

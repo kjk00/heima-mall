@@ -1,0 +1,5 @@
+    2: class MallError(Exception):
+    1:     def __init__(self, status_code: int, detail: str):
+  243:         super().__init__(detail)
+  243:         self.status_code = status_code
+  243:         self.detail = detail

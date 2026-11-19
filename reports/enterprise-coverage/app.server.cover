@@ -1,0 +1,215 @@
+    1: """Small WSGI adapter for local development, using only the Python standard library."""
+    1: import inspect
+    1: import json
+    1: import logging
+    1: import mimetypes
+    1: import os
+    1: import re
+    1: import secrets
+    1: import sqlite3
+    1: import threading
+    1: from http import HTTPStatus
+    1: from http.cookies import CookieError, SimpleCookie
+    1: from pathlib import Path
+    1: from types import SimpleNamespace
+    1: from urllib.parse import parse_qs, urlsplit
+       
+    1: from app import admin, logic, features,shops
+    1: from app.database import Database
+    1: from app.cache import CatalogCache
+    1: from app.config import load_environment
+    1: from app.errors import MallError
+    1: from app.media import media_file
+    1: from app.routes import ROUTES, openapi_document
+    1: from app.schemas import number, text
+    1: from app.security import hash_password
+       
+    1: ROOT = Path(__file__).resolve().parent.parent
+    1: SECURITY_HEADERS = [('X-Content-Type-Options', 'nosniff'), ('X-Frame-Options', 'DENY'),
+           ('Referrer-Policy', 'strict-origin-when-cross-origin'),
+           ('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'")]
+       
+       
+    2: class CookieResponse:
+    1:     def __init__(self):
+ 1063:         self.headers = []
+       
+    1:     def set_cookie(self, key, value, max_age=None, httponly=False, secure=False, samesite='lax', path='/'):
+  221:         cookie = SimpleCookie()
+  221:         cookie[key] = value
+  221:         cookie[key]['path'] = path
+  221:         cookie[key]['samesite'] = samesite
+  221:         if max_age is not None:
+  221:             cookie[key]['max-age'] = max_age
+  221:         if httponly:
+  221:             cookie[key]['httponly'] = True
+  221:         if secure:
+>>>>>>             cookie[key]['secure'] = True
+  221:         self.headers.append(('Set-Cookie', cookie[key].OutputString()))
+       
+    1:     def delete_cookie(self, key, path='/'):
+    2:         self.set_cookie(key, '', max_age=0, httponly=True, path=path)
+       
+       
+    2: class MallApplication:
+    1:     def __init__(self, database_path=None):
+   99:         if database_path is None:
+>>>>>>             load_environment()
+  198:         self.state = SimpleNamespace(
+   99:             database=Database(database_path),
+   99:             login_attempts=[], login_lock=threading.Lock(), dummy_password=hash_password(secrets.token_urlsafe(24))
+               )
+   99:         self.state.database.initialize()
+   99:         self.state.catalog_cache = CatalogCache.from_environment(self.state.database.path)
+   99:         self.state.media_root = self.state.database.path.parent / 'uploads'
+ 7722:         self.routes = [(route, re.compile('^' + re.sub(r'\{(\w+)\}', r'(?P<\1>[^/]+)', route.path) + '$')) for route in ROUTES]
+       
+    1:     def __call__(self, environ, start_response):
+ 1063:         response = CookieResponse()
+ 1063:         method = environ.get('REQUEST_METHOD', 'GET')
+ 1063:         path = environ.get('PATH_INFO', '/')
+ 1063:         status = 200
+ 1063:         mime = 'application/json; charset=utf-8'
+ 1063:         try:
+ 1063:             if path.startswith('/api/') and method in {'POST', 'PUT', 'PATCH', 'DELETE'}:
+  700:                 self.protect_request(environ)
+ 1061:             public_page = re.fullmatch(r'/(?:products|stores)/[1-9]\d{0,18}/?',path)
+ 1061:             if (path in {'/', '/docs', '/admin', '/admin/'} or public_page) and method in {'GET', 'HEAD'}:
+   16:                 filename = 'index.html' if path == '/' or public_page else 'docs.html' if path == '/docs' else 'admin.html'
+   16:                 body = (ROOT / 'app' / 'templates' / filename).read_bytes()
+   16:                 mime = 'text/html; charset=utf-8'
+ 1045:             elif path.startswith('/static/') and method in {'GET', 'HEAD'}:
+    8:                 static_root = (ROOT / 'app' / 'static').resolve()
+    8:                 file = (static_root / path.removeprefix('/static/')).resolve()
+    8:                 if not file.is_relative_to(static_root) or not file.is_file():
+    2:                     raise MallError(404, '文件不存在')
+    6:                 body = file.read_bytes()
+    6:                 mime = mimetypes.guess_type(file.name)[0] or 'application/octet-stream'
+ 1037:             elif path.startswith('/media/') and method in {'GET', 'HEAD'}:
+    2:                 file = media_file(self.state.media_root, path.removeprefix('/media/'))
+    1:                 body = file.read_bytes()
+    1:                 mime = mimetypes.guess_type(file.name)[0]
+ 1035:             elif path == '/openapi.json' and method in {'GET', 'HEAD'}:
+    2:                 body = self.encode(openapi_document())
+                   else:
+ 1033:                 result, status = self.dispatch(environ, response)
+  746:                 body = self.encode(result)
+  292:         except MallError as error:
+  238:             status, body = error.status_code, self.encode({'detail': error.detail})
+   54:         except (ValueError, TypeError, OverflowError) as error:
+   30:             status, body = 422, self.encode({'detail': str(error)})
+   24:         except sqlite3.OperationalError:
+   24:             logging.exception('Database operation failed')
+   24:             status, body = 503, self.encode({'detail': '数据库暂时繁忙，请稍后重试'})
+>>>>>>         except Exception:
+>>>>>>             logging.exception('Unhandled request error')
+>>>>>>             status, body = 500, self.encode({'detail': '服务暂时不可用，请稍后重试'})
+ 1063:         headers = [('Content-Type', mime), ('Content-Length', str(len(body))), ('Cache-Control', 'no-store' if path.startswith('/api/') else 'no-cache')]
+ 1063:         start_response(f'{status} {HTTPStatus(status).phrase}', headers + SECURITY_HEADERS + response.headers)
+ 1063:         return [b'' if method == 'HEAD' else body]
+       
+    2:     @staticmethod
+    2:     def encode(data):
+ 1040:         return json.dumps(data, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
+       
+    2:     @staticmethod
+    2:     def protect_request(environ):
+  700:         if environ.get('HTTP_X_REQUESTED_WITH') != 'HeimaMall':
+    1:             raise MallError(403, '请求缺少 X-Requested-With: HeimaMall 标头')
+  699:         origin = environ.get('HTTP_ORIGIN')
+  699:         if origin:
+    2:             parsed = urlsplit(origin)
+    2:             if (parsed.scheme, parsed.netloc) != (environ.get('wsgi.url_scheme', 'http'), environ.get('HTTP_HOST')):
+    1:                 raise MallError(403, '不允许跨站提交请求')
+       
+    1:     def dispatch(self, environ, response):
+ 1033:         path = environ.get('PATH_INFO', '/')
+ 1033:         method = environ.get('REQUEST_METHOD', 'GET')
+ 1033:         matched_path = False
+26368:         for route, pattern in self.routes:
+26358:             match = pattern.fullmatch(path)
+26358:             if not match:
+25097:                 continue
+ 1261:             matched_path = True
+ 1261:             if route.method != ('GET' if method == 'HEAD' else method):
+  238:                 continue
+ 1023:             cookies = SimpleCookie()
+ 1023:             try:
+ 1023:                 cookies.load(environ.get('HTTP_COOKIE', ''))
+>>>>>>             except CookieError:
+>>>>>>                 pass
+ 2763:             request = SimpleNamespace(cookies={key: item.value for key, item in cookies.items()},
+ 1023:                                       app=self, client=SimpleNamespace(host=environ.get('REMOTE_ADDR', 'local')))
+ 1023:             if route.admin:
+  538:                 with self.state.database.connection() as auth_connection:
+  269:                     admin.current_admin(request, auth_connection)
+  951:             arguments = match.groupdict()
+ 8559:             for identifier in ('product_id', 'user_id', 'address_id', 'coupon_id', 'refund_id', 'comment_id', 'conversation_id','store_id'):
+ 7608:                 if identifier in arguments:
+  180:                     arguments[identifier] = number(int(arguments[identifier]), '编号', 1, 2**63 - 1)
+  951:             if route.model:
+  577:                 content_type = environ.get('CONTENT_TYPE', '').split(';')[0].lower()
+  577:                 if content_type != 'application/json':
+    1:                     raise MallError(415, '请求内容必须为 application/json')
+  576:                 length = int(environ.get('CONTENT_LENGTH') or 0)
+  576:                 maximum = 3 * 1024 * 1024 if route.operation == 'admin_upload_image' else 16384
+  576:                 if not 0 < length <= maximum:
+    1:                     raise MallError(413 if length > maximum else 400, '请求正文为空或过大')
+  575:                 try:
+  575:                     payload = json.loads(environ['wsgi.input'].read(length))
+    1:                 except (json.JSONDecodeError, UnicodeDecodeError):
+    1:                     raise MallError(400, 'JSON 格式不正确')
+  574:                 if not isinstance(payload, dict):
+    1:                     raise MallError(422, '请求正文必须为 JSON 对象')
+  573:                 arguments['payload'] = route.model(**payload)
+  922:             try:
+  922:                 query = parse_qs(environ.get('QUERY_STRING', ''), max_num_fields=20)
+>>>>>>             except ValueError:
+>>>>>>                 raise MallError(422, '查询参数过多')
+  922:             if route.operation in {'products', 'orders'}:
+   28:                 arguments['page'] = number(int(query.get('page', ['1'])[0]), '页码', 1, 2**31 - 1)
+   27:                 arguments['page_size'] = number(int(query.get('page_size', ['12' if route.operation == 'products' else '10'])[0]), '每页数量', 1, 50)
+  920:             if route.operation == 'products':
+   21:                 raw=query.get('store_id',[''])[0]
+   21:                 arguments['store_id']=number(int(raw),'店铺编号',1,2**63-1) if raw else None
+   20:                 sale=query.get('on_sale',['false'])[0]
+   20:                 if sale not in {'true','false','1','0'}: raise MallError(422,'折扣筛选参数不正确')
+   19:                 arguments['on_sale']=sale in {'true','1'}
+   19:                 arguments['q'] = text(query.get('q', [''])[0], '搜索词', 0, 100)
+   19:                 arguments['category'] = text(query.get('category', [''])[0], '分类', 0, 30)
+   19:                 arguments['sort'] = query.get('sort', ['recommended'])[0]
+   19:                 if arguments['sort'] not in {'recommended', 'newest', 'popular', 'price_asc', 'price_desc'}:
+    1:                     raise MallError(422, '排序方式不正确')
+  917:             if route.operation in {'admin_products', 'admin_orders', 'admin_users'}:
+   20:                 arguments.update(admin.query_arguments(query, route.operation))
+  913:             handler = getattr(shops if route.module=='shops' else features if route.module else admin if route.operation.startswith('admin_') else logic, route.operation)
+  913:             parameters = inspect.signature(handler).parameters
+  913:             if route.module:
+  210:                 if 'store_id' in parameters and 'store_id' not in arguments:
+   22:                     raw=query.get('store_id',[str(parameters['store_id'].default) if parameters['store_id'].default is not None else ''])[0]
+   22:                     arguments['store_id']=number(int(raw),'店铺编号',1,2**63-1) if raw else None
+  210:                 if 'q' in parameters:arguments['q']=text(query.get('q',[''])[0],'搜索词',0,100)
+  209:                 if route.operation=='admin_stores':
+    7:                     arguments['status']=query.get('status',['all'])[0]
+ 1041:                 for key,default,minimum,maximum in [('page',1,1,2**31-1),('page_size',10,1,50),('after_id',0,0,2**63-1),('before_id',0,0,2**63-1)]:
+  833:                     if key in parameters: arguments[key]=number(int(query.get(key,[str(parameters[key].default)])[0]),key,minimum,maximum)
+  208:                 if 'kind' in parameters:
+    9:                     arguments['kind']=query.get('kind',['comments'])[0]
+    9:                     if arguments['kind'] not in {'comments','reviews'}: raise MallError(422,'评论类型不正确')
+ 1820:             with self.state.database.connection() as connection:
+  910:                 if route.admin:
+  178:                     arguments['user'] = admin.current_admin(request, connection)
+  732:                 elif route.auth:
+  399:                     arguments['user'] = logic.current_user(request, connection)
+  882:                 if 'connection' in parameters:
+  836:                     arguments['connection'] = connection
+  882:                 if 'request' in parameters:
+  132:                     arguments['request'] = request
+  882:                 if 'response' in parameters:
+  231:                     arguments['response'] = response
+  882:                 if route.operation in CatalogCache.OPERATIONS and method in {'GET', 'HEAD'}:
+  374:                     cache_arguments = {key: value for key, value in arguments.items() if key != 'connection'}
+  264:                     return self.state.catalog_cache.read(connection, route.operation, cache_arguments,
+  251:                         lambda: handler(**arguments)), route.status
+  792:                 return handler(**arguments), route.status
+   10:         raise MallError(405 if matched_path else 404, '请求方法不支持' if matched_path else '接口不存在')

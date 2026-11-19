@@ -1,0 +1,199 @@
+{
+  "timestamp_utc": "2026-11-17T09:34:31.631975+00:00",
+  "python": "3.12.15",
+  "runtime": "FastAPI / AsyncSession / ASGITransport",
+  "database_backend": "sqlite",
+  "network_included": false,
+  "redis_enabled": true,
+  "hot_read": true,
+  "pool_size": 32,
+  "application_admission": 128,
+  "note": "统一释放虚拟买家；实际请求并发受客户端信号量、应用准入和数据库连接池限制。",
+  "scenarios": [
+    {
+      "stock": 5000,
+      "virtual_users": 5000,
+      "configured_client_concurrency": 64,
+      "peak_active_buyers": 64,
+      "seconds": 61.964,
+      "completed_buyers_per_second": 80.69,
+      "successful_orders_per_second": 80.69,
+      "checkout_statuses": {
+        "201": 5000
+      },
+      "payment_statuses": {
+        "200": 5000
+      },
+      "service_error_buyers": 0,
+      "arrival_latency": {
+        "mean_ms": 30053.103,
+        "p50_ms": 29596.989,
+        "p95_ms": 58368.62,
+        "p99_ms": 61120.966,
+        "max_ms": 61963.043
+      },
+      "client_queue_latency": {
+        "mean_ms": 29268.27,
+        "p50_ms": 28837.651,
+        "p95_ms": 57524.633,
+        "p99_ms": 60243.191,
+        "max_ms": 60921.695
+      },
+      "processing_latency": {
+        "mean_ms": 784.833,
+        "p50_ms": 482.089,
+        "p95_ms": 2391.665,
+        "p99_ms": 4110.069,
+        "max_ms": 7262.031
+      },
+      "consistency": {
+        "orders_created": 5000,
+        "paid_orders": 5000,
+        "reserved_units": 5000,
+        "final_stock": 0,
+        "sales": 5000,
+        "remaining_carts": 0,
+        "checks": {
+          "all_buyers_completed": true,
+          "no_overselling": true,
+          "inventory_conserved": true,
+          "one_unit_per_order": true,
+          "one_order_per_buyer": true,
+          "orders_match_responses": true,
+          "sales_match_payments": true,
+          "carts_match_failed_orders": true,
+          "prices_match_snapshot": true,
+          "foreign_keys_valid": true,
+          "database_integrity": true
+        },
+        "consistency_passed": true
+      },
+      "passed": true,
+      "error_samples": []
+    },
+    {
+      "stock": 100,
+      "virtual_users": 5000,
+      "configured_client_concurrency": 64,
+      "peak_active_buyers": 64,
+      "seconds": 20.565,
+      "completed_buyers_per_second": 243.13,
+      "successful_orders_per_second": 4.86,
+      "checkout_statuses": {
+        "201": 100,
+        "409": 4900
+      },
+      "payment_statuses": {
+        "200": 100
+      },
+      "service_error_buyers": 0,
+      "arrival_latency": {
+        "mean_ms": 10492.456,
+        "p50_ms": 10541.686,
+        "p95_ms": 19056.974,
+        "p99_ms": 19839.673,
+        "max_ms": 20564.078
+      },
+      "client_queue_latency": {
+        "mean_ms": 10237.272,
+        "p50_ms": 10295.913,
+        "p95_ms": 18818.74,
+        "p99_ms": 19560.048,
+        "max_ms": 19788.919
+      },
+      "processing_latency": {
+        "mean_ms": 255.184,
+        "p50_ms": 131.021,
+        "p95_ms": 950.426,
+        "p99_ms": 2335.999,
+        "max_ms": 5941.294
+      },
+      "consistency": {
+        "orders_created": 100,
+        "paid_orders": 100,
+        "reserved_units": 100,
+        "final_stock": 0,
+        "sales": 100,
+        "remaining_carts": 4900,
+        "checks": {
+          "all_buyers_completed": true,
+          "no_overselling": true,
+          "inventory_conserved": true,
+          "one_unit_per_order": true,
+          "one_order_per_buyer": true,
+          "orders_match_responses": true,
+          "sales_match_payments": true,
+          "carts_match_failed_orders": true,
+          "prices_match_snapshot": true,
+          "foreign_keys_valid": true,
+          "database_integrity": true
+        },
+        "consistency_passed": true
+      },
+      "passed": true,
+      "error_samples": []
+    },
+    {
+      "stock": 1,
+      "virtual_users": 5000,
+      "configured_client_concurrency": 64,
+      "peak_active_buyers": 64,
+      "seconds": 19.689,
+      "completed_buyers_per_second": 253.95,
+      "successful_orders_per_second": 0.05,
+      "checkout_statuses": {
+        "201": 1,
+        "409": 4999
+      },
+      "payment_statuses": {
+        "200": 1
+      },
+      "service_error_buyers": 0,
+      "arrival_latency": {
+        "mean_ms": 9874.148,
+        "p50_ms": 9867.46,
+        "p95_ms": 18556.616,
+        "p99_ms": 19316.984,
+        "max_ms": 19687.974
+      },
+      "client_queue_latency": {
+        "mean_ms": 9625.958,
+        "p50_ms": 9634.353,
+        "p95_ms": 18320.249,
+        "p99_ms": 19101.333,
+        "max_ms": 19274.556
+      },
+      "processing_latency": {
+        "mean_ms": 248.19,
+        "p50_ms": 131.343,
+        "p95_ms": 943.455,
+        "p99_ms": 2348.344,
+        "max_ms": 7448.697
+      },
+      "consistency": {
+        "orders_created": 1,
+        "paid_orders": 1,
+        "reserved_units": 1,
+        "final_stock": 0,
+        "sales": 1,
+        "remaining_carts": 4999,
+        "checks": {
+          "all_buyers_completed": true,
+          "no_overselling": true,
+          "inventory_conserved": true,
+          "one_unit_per_order": true,
+          "one_order_per_buyer": true,
+          "orders_match_responses": true,
+          "sales_match_payments": true,
+          "carts_match_failed_orders": true,
+          "prices_match_snapshot": true,
+          "foreign_keys_valid": true,
+          "database_integrity": true
+        },
+        "consistency_passed": true
+      },
+      "passed": true,
+      "error_samples": []
+    }
+  ]
+}

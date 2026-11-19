@@ -1,0 +1,12 @@
+    1: import re
+    1: from pathlib import Path
+    1: from app.errors import MallError
+       
+       
+    1: def media_file(root: Path, filename: str):
+    2:     if not re.fullmatch(r'[a-f0-9]{64}\.(png|jpg|webp)', filename):
+    1:         raise MallError(404, '图片不存在')
+    1:     path = (root / filename).resolve()
+    1:     if not path.is_relative_to(root.resolve()) or not path.is_file():
+>>>>>>         raise MallError(404, '图片不存在')
+    1:     return path

@@ -1,0 +1,196 @@
+{
+  "timestamp_utc": "2026-11-19T05:02:31.114664+00:00",
+  "mode": "in-process ASGI (FastAPI) + SQLite",
+  "search_engine": "elasticsearch",
+  "catalog_cache": "disabled (REDIS_URL empty)",
+  "environment": {
+    "python": "3.12.15",
+    "os": "macOS-15.7.7-arm64-arm-64bit",
+    "cpu_count": 8
+  },
+  "catalog": {
+    "products": 1000000,
+    "keyword_group": 1200,
+    "keyword": "耳机",
+    "categories": {
+      "家居生活": 166468,
+      "数码科技": 167666,
+      "服饰箱包": 166466,
+      "美妆个护": 166467,
+      "运动户外": 166467,
+      "食品饮料": 166466
+    }
+  },
+  "scenarios": [
+    {
+      "name": "唯一商品搜索",
+      "path": "/api/products?q=星陨限定礼盒",
+      "description": "1000000 件商品中按名称定位唯一商品（q=星陨限定礼盒，命中 1 件）",
+      "levels": [
+        {
+          "concurrency": 1,
+          "requests": 200,
+          "failures": 0,
+          "failure_samples": [],
+          "seconds": 1.222,
+          "rps": 163.6,
+          "latency": {
+            "min_ms": 4.205,
+            "mean_ms": 6.074,
+            "p50_ms": 6.016,
+            "p95_ms": 7.946,
+            "p99_ms": 9.766,
+            "max_ms": 10.579
+          }
+        },
+        {
+          "concurrency": 16,
+          "requests": 200,
+          "failures": 0,
+          "failure_samples": [],
+          "seconds": 0.783,
+          "rps": 255.6,
+          "latency": {
+            "min_ms": 37.448,
+            "mean_ms": 61.053,
+            "p50_ms": 59.242,
+            "p95_ms": 84.594,
+            "p99_ms": 93.416,
+            "max_ms": 98.743
+          }
+        },
+        {
+          "concurrency": 64,
+          "requests": 200,
+          "failures": 0,
+          "failure_samples": [],
+          "seconds": 0.819,
+          "rps": 244.3,
+          "latency": {
+            "min_ms": 109.022,
+            "mean_ms": 248.308,
+            "p50_ms": 242.251,
+            "p95_ms": 398.788,
+            "p99_ms": 549.75,
+            "max_ms": 601.651
+          }
+        }
+      ]
+    },
+    {
+      "name": "同类关键词搜索",
+      "path": "/api/products?q=耳机",
+      "description": "关键词搜索同类商品（q=耳机，命中 1200 件，取第 1 页）",
+      "levels": [
+        {
+          "concurrency": 1,
+          "requests": 200,
+          "failures": 0,
+          "failure_samples": [],
+          "seconds": 2.366,
+          "rps": 84.5,
+          "latency": {
+            "min_ms": 9.28,
+            "mean_ms": 11.754,
+            "p50_ms": 12.324,
+            "p95_ms": 13.944,
+            "p99_ms": 15.724,
+            "max_ms": 20.419
+          }
+        },
+        {
+          "concurrency": 16,
+          "requests": 200,
+          "failures": 0,
+          "failure_samples": [],
+          "seconds": 1.433,
+          "rps": 139.6,
+          "latency": {
+            "min_ms": 43.571,
+            "mean_ms": 113.035,
+            "p50_ms": 115.475,
+            "p95_ms": 131.856,
+            "p99_ms": 138.983,
+            "max_ms": 148.141
+          }
+        },
+        {
+          "concurrency": 64,
+          "requests": 200,
+          "failures": 0,
+          "failure_samples": [],
+          "seconds": 1.68,
+          "rps": 119.1,
+          "latency": {
+            "min_ms": 256.124,
+            "mean_ms": 498.935,
+            "p50_ms": 493.683,
+            "p95_ms": 812.105,
+            "p99_ms": 988.23,
+            "max_ms": 1233.658
+          }
+        }
+      ]
+    },
+    {
+      "name": "无关键词浏览（对照）",
+      "path": "/api/products",
+      "description": "不带关键词的目录浏览，作为搜索开销对照",
+      "levels": [
+        {
+          "concurrency": 1,
+          "requests": 200,
+          "failures": 0,
+          "failure_samples": [],
+          "seconds": 5.688,
+          "rps": 35.2,
+          "latency": {
+            "min_ms": 26.605,
+            "mean_ms": 28.342,
+            "p50_ms": 27.986,
+            "p95_ms": 30.46,
+            "p99_ms": 32.653,
+            "max_ms": 33.891
+          }
+        },
+        {
+          "concurrency": 16,
+          "requests": 200,
+          "failures": 0,
+          "failure_samples": [],
+          "seconds": 1.854,
+          "rps": 107.9,
+          "latency": {
+            "min_ms": 54.985,
+            "mean_ms": 145.998,
+            "p50_ms": 147.512,
+            "p95_ms": 189.883,
+            "p99_ms": 219.535,
+            "max_ms": 228.215
+          }
+        },
+        {
+          "concurrency": 64,
+          "requests": 200,
+          "failures": 0,
+          "failure_samples": [],
+          "seconds": 2.152,
+          "rps": 92.9,
+          "latency": {
+            "min_ms": 166.295,
+            "mean_ms": 648.211,
+            "p50_ms": 651.937,
+            "p95_ms": 991.922,
+            "p99_ms": 1060.071,
+            "max_ms": 1281.776
+          }
+        }
+      ]
+    }
+  ],
+  "search_index": {
+    "index": "heima_products-44bf7424e2c8-9b03a00e2af3",
+    "docs": 1000000,
+    "reindex_seconds": 46.712
+  }
+}

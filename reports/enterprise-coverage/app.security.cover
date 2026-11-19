@@ -1,0 +1,31 @@
+    1: import hashlib
+    1: import hmac
+    1: import secrets
+    1: import time
+       
+    1: SESSION_SECONDS = 7 * 24 * 60 * 60
+       
+       
+    1: def hash_password(password: str) -> str:
+  299:     salt = secrets.token_hex(16)
+  299:     digest = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 600_000).hex()
+  299:     return f'pbkdf2_sha256$600000${salt}${digest}'
+       
+       
+    1: def verify_password(password: str, encoded: str) -> bool:
+   39:     _, rounds, salt, expected = encoded.split('$')
+   39:     actual = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), int(rounds)).hex()
+   39:     return hmac.compare_digest(actual, expected)
+       
+       
+    1: def token_hash(token: str) -> str:
+ 1080:     return hashlib.sha256(token.encode()).hexdigest()
+       
+       
+    1: def create_session(connection, user_id: int) -> str:
+  219:     token = secrets.token_urlsafe(32)
+  219:     now = int(time.time())
+  219:     connection.execute('DELETE FROM sessions WHERE expires_at <= ?', (now,))
+  219:     connection.execute('INSERT INTO sessions VALUES (?,?,?)', (token_hash(token), user_id, now + SESSION_SECONDS))
+  219:     return token
+       

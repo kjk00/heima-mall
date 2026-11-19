@@ -1,0 +1,299 @@
+{
+  "timestamp_utc": "2026-11-17T09:26:43.130204+00:00",
+  "python": "3.12.15",
+  "runtime": "FastAPI / AsyncSession / ASGITransport",
+  "database_backend": "sqlite",
+  "network_included": false,
+  "redis_enabled": true,
+  "hot_read": true,
+  "pool_size": 32,
+  "application_admission": 128,
+  "note": "统一释放虚拟买家；实际请求并发受客户端信号量、应用准入和数据库连接池限制。",
+  "scenarios": [
+    {
+      "stock": 10000,
+      "virtual_users": 10000,
+      "configured_client_concurrency": 256,
+      "peak_active_buyers": 256,
+      "seconds": 120.161,
+      "completed_buyers_per_second": 83.22,
+      "successful_orders_per_second": 74.23,
+      "checkout_statuses": {
+        "201": 8920,
+        "client_error": 1080
+      },
+      "payment_statuses": {
+        "200": 8844
+      },
+      "service_error_buyers": 1156,
+      "arrival_latency": {
+        "mean_ms": 64740.264,
+        "p50_ms": 63923.844,
+        "p95_ms": 120153.937,
+        "p99_ms": 120158.598,
+        "max_ms": 120160.295
+      },
+      "client_queue_latency": {
+        "mean_ms": 61665.913,
+        "p50_ms": 60338.468,
+        "p95_ms": 120153.665,
+        "p99_ms": 120154.503,
+        "max_ms": 120154.713
+      },
+      "processing_latency": {
+        "mean_ms": 3074.351,
+        "p50_ms": 3129.756,
+        "p95_ms": 5035.437,
+        "p99_ms": 6595.015,
+        "max_ms": 10452.99
+      },
+      "consistency": {
+        "orders_created": 8920,
+        "paid_orders": 8844,
+        "reserved_units": 8920,
+        "final_stock": 1080,
+        "sales": 8844,
+        "remaining_carts": 1080,
+        "checks": {
+          "all_buyers_completed": true,
+          "no_overselling": true,
+          "inventory_conserved": true,
+          "one_unit_per_order": true,
+          "one_order_per_buyer": true,
+          "orders_match_responses": true,
+          "sales_match_payments": true,
+          "carts_match_failed_orders": true,
+          "prices_match_snapshot": true,
+          "foreign_keys_valid": true,
+          "database_integrity": true
+        },
+        "consistency_passed": true
+      },
+      "passed": false,
+      "error_samples": [
+        {
+          "buyer_id": 8592,
+          "catalog_status": 200,
+          "checkout_status": 201,
+          "order_id": "HM202611171726CAD13F7F",
+          "client_error": "TimeoutError",
+          "arrival_ms": 120155.99570801714,
+          "queue_ms": 112309.92183301714,
+          "processing_ms": 7846.073875000002
+        },
+        {
+          "buyer_id": 8639,
+          "catalog_status": 200,
+          "checkout_status": 201,
+          "order_id": "HM20261117AE2ECE4970E4",
+          "client_error": "TimeoutError",
+          "arrival_ms": 120158.98570802528,
+          "queue_ms": 113088.70849999948,
+          "processing_ms": 7070.2772080258
+        },
+        {
+          "buyer_id": 8652,
+          "catalog_status": 200,
+          "checkout_status": 201,
+          "order_id": "HM20261117203F22F54885",
+          "client_error": "TimeoutError",
+          "arrival_ms": 120159.00300000794,
+          "queue_ms": 113226.19337501237,
+          "processing_ms": 6932.809624995571
+        },
+        {
+          "buyer_id": 8709,
+          "catalog_status": 200,
+          "checkout_status": 201,
+          "order_id": "HM20261117795405D35462",
+          "client_error": "TimeoutError",
+          "arrival_ms": 120159.01975001907,
+          "queue_ms": 113983.68245802703,
+          "processing_ms": 6175.337291992037
+        },
+        {
+          "buyer_id": 8764,
+          "catalog_status": 200,
+          "checkout_status": 201,
+          "order_id": "HM20261117BB1C13B257D4",
+          "client_error": "TimeoutError",
+          "arrival_ms": 120159.03570802766,
+          "queue_ms": 114895.34304101835,
+          "processing_ms": 5263.692667009309
+        },
+        {
+          "buyer_id": 8783,
+          "catalog_status": 200,
+          "checkout_status": 201,
+          "order_id": "HM20261117013B152A5217",
+          "client_error": "TimeoutError",
+          "arrival_ms": 120132.24670800264,
+          "queue_ms": 115112.69366601482,
+          "processing_ms": 5019.55304198782
+        },
+        {
+          "buyer_id": 8794,
+          "catalog_status": 200,
+          "checkout_status": 201,
+          "order_id": "HM20261117041BF1454FC6",
+          "client_error": "TimeoutError",
+          "arrival_ms": 120159.05291601666,
+          "queue_ms": 115299.64162502438,
+          "processing_ms": 4859.411290992284
+        },
+        {
+          "buyer_id": 8798,
+          "catalog_status": 200,
+          "checkout_status": 201,
+          "order_id": "HM20261117457600D7EF3A",
+          "client_error": "TimeoutError",
+          "arrival_ms": 120159.07004100154,
+          "queue_ms": 115376.14066601964,
+          "processing_ms": 4782.929374981904
+        },
+        {
+          "buyer_id": 8805,
+          "catalog_status": 200,
+          "client_error": "TimeoutError",
+          "arrival_ms": 120159.08729101648,
+          "queue_ms": 115529.9682910263,
+          "processing_ms": 4629.118999990169
+        },
+        {
+          "buyer_id": 8806,
+          "catalog_status": 200,
+          "checkout_status": 201,
+          "order_id": "HM20261117C2BDCC388F73",
+          "client_error": "TimeoutError",
+          "arrival_ms": 120159.10358302062,
+          "queue_ms": 115540.07629101397,
+          "processing_ms": 4619.027292006649
+        }
+      ]
+    },
+    {
+      "stock": 100,
+      "virtual_users": 10000,
+      "configured_client_concurrency": 256,
+      "peak_active_buyers": 256,
+      "seconds": 40.974,
+      "completed_buyers_per_second": 244.05,
+      "successful_orders_per_second": 2.44,
+      "checkout_statuses": {
+        "409": 9900,
+        "201": 100
+      },
+      "payment_statuses": {
+        "200": 100
+      },
+      "service_error_buyers": 0,
+      "arrival_latency": {
+        "mean_ms": 21105.735,
+        "p50_ms": 20851.874,
+        "p95_ms": 38854.786,
+        "p99_ms": 40244.596,
+        "max_ms": 40971.21
+      },
+      "client_queue_latency": {
+        "mean_ms": 20078.216,
+        "p50_ms": 19848.802,
+        "p95_ms": 37858.293,
+        "p99_ms": 39386.876,
+        "max_ms": 39760.312
+      },
+      "processing_latency": {
+        "mean_ms": 1027.519,
+        "p50_ms": 883.291,
+        "p95_ms": 1863.047,
+        "p99_ms": 3194.633,
+        "max_ms": 10635.622
+      },
+      "consistency": {
+        "orders_created": 100,
+        "paid_orders": 100,
+        "reserved_units": 100,
+        "final_stock": 0,
+        "sales": 100,
+        "remaining_carts": 9900,
+        "checks": {
+          "all_buyers_completed": true,
+          "no_overselling": true,
+          "inventory_conserved": true,
+          "one_unit_per_order": true,
+          "one_order_per_buyer": true,
+          "orders_match_responses": true,
+          "sales_match_payments": true,
+          "carts_match_failed_orders": true,
+          "prices_match_snapshot": true,
+          "foreign_keys_valid": true,
+          "database_integrity": true
+        },
+        "consistency_passed": true
+      },
+      "passed": true,
+      "error_samples": []
+    },
+    {
+      "stock": 1,
+      "virtual_users": 10000,
+      "configured_client_concurrency": 256,
+      "peak_active_buyers": 256,
+      "seconds": 38.617,
+      "completed_buyers_per_second": 258.95,
+      "successful_orders_per_second": 0.03,
+      "checkout_statuses": {
+        "409": 9999,
+        "201": 1
+      },
+      "payment_statuses": {
+        "200": 1
+      },
+      "service_error_buyers": 0,
+      "arrival_latency": {
+        "mean_ms": 19483.272,
+        "p50_ms": 19449.384,
+        "p95_ms": 36628.809,
+        "p99_ms": 38043.291,
+        "max_ms": 38614.683
+      },
+      "client_queue_latency": {
+        "mean_ms": 18513.01,
+        "p50_ms": 18509.984,
+        "p95_ms": 35640.344,
+        "p99_ms": 37183.477,
+        "max_ms": 37521.308
+      },
+      "processing_latency": {
+        "mean_ms": 970.262,
+        "p50_ms": 840.3,
+        "p95_ms": 1665.436,
+        "p99_ms": 3118.434,
+        "max_ms": 6650.106
+      },
+      "consistency": {
+        "orders_created": 1,
+        "paid_orders": 1,
+        "reserved_units": 1,
+        "final_stock": 0,
+        "sales": 1,
+        "remaining_carts": 9999,
+        "checks": {
+          "all_buyers_completed": true,
+          "no_overselling": true,
+          "inventory_conserved": true,
+          "one_unit_per_order": true,
+          "one_order_per_buyer": true,
+          "orders_match_responses": true,
+          "sales_match_payments": true,
+          "carts_match_failed_orders": true,
+          "prices_match_snapshot": true,
+          "foreign_keys_valid": true,
+          "database_integrity": true
+        },
+        "consistency_passed": true
+      },
+      "passed": true,
+      "error_samples": []
+    }
+  ]
+}
