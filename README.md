@@ -403,7 +403,7 @@ Apple Silicon 上 7.17 自带的 JDK 与机器学习原生组件是 x86_64，需
 - **同步**：商品写入触发事务 outbox → RabbitMQ → 消费者，把名称、短介绍、描述、详情 HTML 的纯文本（`detail_text`）与参数文本（`params_text`）一并批量写入 Elasticsearch；搜索关键词可命中参数与详情内容。
 - **读取与一致性**：MySQL `params_json` 是参数的权威来源。详情读取与 ES 批量索引共用一致性校验：发现 MongoDB 文档缺失、版本落后、参数不符或旧文档无版本时，返回当前 SQL 快照的参数并尝试读修复；参数清空也会同步。旧 SQL 快照不会覆盖较新的 MongoDB 文档。详情组装结果放入既有 Redis `product` 缓存（商品/店铺写入触发器推进版本自动失效）。
 - **安全**：详情 HTML 经 `app/html_sanitize.py` 白名单过滤（仅保留段落、列表、表格、图片等展示标签，丢弃 script/iframe/事件属性，图片 src 仅限 `/media/` 对象键），写入时即净化，前端直接渲染净化后的 HTML。
-- **降级**：MongoDB 未配置、不可达或修复失败时，仍返回 SQL 参数；故障期间提交的参数不会因 MongoDB 恢复而回退，后续未命中缓存的详情读取或索引同步会重试修复（没有独立后台参数同步任务，未被访问的文档不会立即补齐）。MinIO 未配置或不可达时，图片回退本地 `uploads/` 目录。MongoDB 库名按数据库路径哈希隔离（`heima_params_<hash>`），测试互不污染。
+- **降级**：MongoDB 未配置、不可达或修复失败时，仍返回 SQL 参数；故障期间提交的参数不会因 MongoDB 恢复而回退，后续未命中缓存的详情读取或索引同步会重试修复（没有独立后台参数同步任务，未被访问的文档不会立即补齐）。MinIO 未配置或不可达时，图片回退本地 `uploads/` 目录；配置完整但启动连接失败时，保留连接配置，冷却 5 秒后由下一次存储访问重试，无需重启应用，并发请求只允许一次重连、其余继续使用本地存储。恢复后新上传优先写入 MinIO，故障期间的本地图片仍可通过原 `/media/` URL 读取，不会自动搬迁。MongoDB 库名按数据库路径哈希隔离（`heima_params_<hash>`），测试互不污染。
 
 MongoDB 一致性回归测试：`.venv/bin/python -m pytest tests/test_mongodb.py -q`。启用真实 MongoDB 原子写入和并发验证：`MONGODB_TESTS=1 .venv/bin/python -m pytest tests/test_mongodb.py -q`，默认连接 `mongodb://127.0.0.1:27017`，可用 `MONGODB_TEST_URL` 覆盖；每个测试创建随机临时库并在结束后删除，不改动商城数据库。
 

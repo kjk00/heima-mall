@@ -68,6 +68,7 @@ class ProductParams:
         await self.collection.delete_one({'_id': product_id})
 
     def close(self):
+        """Motor's client close is synchronous; do not create an unawaited coroutine."""
         self.client.close()
 
 

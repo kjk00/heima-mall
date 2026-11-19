@@ -8,7 +8,9 @@ unconfigured or unreachable, objects fall back to the local uploads directory.
 import logging
 import os
 import tempfile
+import threading
 import time
+from functools import partial
 from pathlib import Path
 
 LOGGER = logging.getLogger(__name__)
@@ -87,9 +89,11 @@ class MinioStorage:
 
 
 class ObjectStorage:
-    def __init__(self, root, primary=None):
+    def __init__(self, root, primary=None, primary_factory=None):
         self.local = LocalStorage(root)
         self.primary = primary
+        self._primary_factory = primary_factory
+        self._connect_lock = threading.Lock()
         self.disabled_until = 0.0
         self.warned_until = 0.0
 
@@ -98,14 +102,15 @@ class ObjectStorage:
         endpoint = os.getenv('OSS_ENDPOINT', '').strip()
         access = os.getenv('OSS_ACCESS_KEY', '').strip()
         secret = os.getenv('OSS_SECRET_KEY', '').strip()
-        primary = None
+        factory = None
         if endpoint and access and secret:
-            try:
-                primary = MinioStorage(endpoint, access, secret, os.getenv('OSS_BUCKET', 'heima-mall'),
-                                       secure=os.getenv('OSS_SECURE', '0') == '1')
-            except Exception:
-                LOGGER.warning('MinIO对象存储不可用，图片降级为本地磁盘存储', exc_info=True)
-        return cls(root, primary)
+            # Keep the original configuration even if the initial connection
+            # fails, so subsequent requests can recover without restarting.
+            factory = partial(MinioStorage, endpoint, access, secret, os.getenv('OSS_BUCKET', 'heima-mall'),
+                              secure=os.getenv('OSS_SECURE', '0') == '1')
+        instance = cls(root, primary_factory=factory)
+        instance._healthy()
+        return instance
 
     def _trip(self):
         now = time.monotonic()
@@ -115,7 +120,25 @@ class ObjectStorage:
         self.disabled_until = now + 5
 
     def _healthy(self):
-        return self.primary is not None and time.monotonic() >= self.disabled_until
+        if time.monotonic() < self.disabled_until:
+            return False
+        if self.primary is not None:
+            return True
+        if self._primary_factory is None or not self._connect_lock.acquire(blocking=False):
+            return False
+        try:
+            # Another request may have connected (or failed) before we acquired
+            # the lock. Requests arriving during a retry use local storage.
+            if time.monotonic() < self.disabled_until:
+                return False
+            if self.primary is None:
+                try:
+                    self.primary = self._primary_factory()
+                except Exception:
+                    self._trip()
+            return self.primary is not None
+        finally:
+            self._connect_lock.release()
 
     def put(self, key, content, content_type='application/octet-stream'):
         if self._healthy():
@@ -147,7 +170,7 @@ class ObjectStorage:
         return self.local.exists(key)
 
     def delete(self, key):
-        if self.primary is not None:
+        if self.primary is not None or self._healthy():
             try:
                 self.primary.delete(key)
             except Exception:

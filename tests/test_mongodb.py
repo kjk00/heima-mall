@@ -116,6 +116,39 @@ class MongoDBLifecycleTests(unittest.TestCase):
         instance.client.close.assert_called_once()
 
 
+class MongoDBStoreLifecycleTests(unittest.IsolatedAsyncioTestCase):
+    def make_instance(self):
+        instance = mongodb.ProductParams.__new__(mongodb.ProductParams)
+        instance.client = Mock()
+        return instance
+
+    async def test_switching_configuration_or_event_loop_closes_previous_client(self):
+        for reason in ('configuration', 'event_loop'):
+            with self.subTest(reason=reason):
+                previous, replacement = self.make_instance(), self.make_instance()
+                loop = asyncio.get_running_loop()
+                database = 'new' if reason == 'configuration' else 'original'
+                with patch.dict(os.environ, {'MONGODB_URL': 'mongodb://configured', 'MONGODB_DATABASE': database}), \
+                        patch.multiple(mongodb, _store=previous, _store_key=('mongodb://configured', 'original'),
+                                       _store_loop=loop if reason == 'configuration' else object(), _disabled_until=0.0), \
+                        patch.object(mongodb, 'ProductParams', return_value=replacement):
+                    self.assertIs(mongodb.store(Path('/tmp/lifecycle.db')), replacement)
+                    previous.client.close.assert_called_once()
+                    replacement.client.close.assert_not_called()
+                    self.assertIs(mongodb._store_loop, loop)
+
+    async def test_global_close_releases_client_and_clears_cached_state(self):
+        instance = self.make_instance()
+        with patch.multiple(mongodb, _store=instance, _store_key=('url', 'database'), _store_loop=object()):
+            await mongodb.close()
+            instance.client.close.assert_called_once()
+            self.assertIsNone(mongodb._store)
+            self.assertIsNone(mongodb._store_key)
+            self.assertIsNone(mongodb._store_loop)
+            await mongodb.close()
+            instance.client.close.assert_called_once()
+
+
 class MongoDBProductFlowTests(unittest.TestCase):
     def setUp(self):
         from app.server import MallApplication
