@@ -11,7 +11,7 @@ class RequestGuard:
     def __init__(self, app):
         self.app = app
         self.models = [(route.method, re.compile('^' + re.sub(r'\{\w+\}', '[^/]+', route.path) + '$'),
-                        route.model, 3 * 1024 * 1024 if route.operation == 'admin_upload_image' else 16384)
+                        route.model, 3 * 1024 * 1024 if route.operation in {'admin_upload_image', 'search_photo'} else 16384)
                        for route in ROUTES if route.model]
 
     @staticmethod

@@ -70,6 +70,8 @@ ROUTES += [
     Route('GET','/api/stores','stores','店铺列表','店铺',module='shops'),
     Route('GET','/api/stores/{store_id}','store','店铺详情','店铺',module='shops'),
     Route('GET','/api/search/suggestions','search_suggestions','最近浏览与热门商品店铺推荐','搜索',module='shops'),
+    Route('GET','/api/search/photo/status','photo_search_status','照片识别可用状态','搜索',module='photo_search'),
+    Route('POST','/api/search/photo','search_photo','照片识别商品并搜索（最大 2 MB）','搜索',ImageUploadInput,module='photo_search'),
     Route('GET','/api/admin/stores','admin_stores','店铺管理列表','后台店铺',admin=True,module='shops'),
     Route('POST','/api/admin/stores','admin_create_store','新增店铺','后台店铺',schemas.StoreInput,status=201,admin=True,module='shops'),
     Route('GET','/api/admin/stores/{store_id}','admin_store','管理店铺详情','后台店铺',admin=True,module='shops'),
@@ -158,8 +160,9 @@ def openapi_document():
             parameters.extend([{'name': 'page', 'in': 'query', 'schema': {'type': 'integer', 'minimum': 1, 'default': 1}},
                                {'name': 'page_size', 'in': 'query', 'schema': {'type': 'integer', 'minimum': 1, 'maximum': 50, 'default': 12 if route.operation == 'products' else 10}}])
         if route.module:
-            from app import features,shops
-            handler_parameters=inspect.signature(getattr(shops if route.module=='shops' else features,route.operation)).parameters
+            from app import features, shops, photo_search
+            module = {'shops': shops, 'features': features, 'photo_search': photo_search}[route.module]
+            handler_parameters=inspect.signature(getattr(module,route.operation)).parameters
             for key in ('page','page_size'):
                 if key in handler_parameters:
                     schema={'type':'integer','minimum':1,'default':handler_parameters[key].default}

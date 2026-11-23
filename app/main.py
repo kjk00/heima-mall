@@ -1,4 +1,4 @@
-from app import admin, logic, features,shops
+from app import admin, logic, features, shops, photo_search
 import asyncio
 import inspect
 import re
@@ -97,7 +97,10 @@ def create_app(database_path: str | Path | None=None):
                     if search_engine is not None:
                         await search_engine.close()
                 finally:
-                    await database.close()
+                    try:
+                        await asyncio.to_thread(application.state.photo_search.close)
+                    finally:
+                        await database.close()
     application = FastAPI(title='黑马商城 API', version='2.0.0', lifespan=lifespan, docs_url=None, redoc_url=None, description='商品、用户、购物车和订单接口。金额单位：人民币分。支付仅用于演示。')
     application.openapi = openapi_document
     application.add_middleware(RequestGuard)
@@ -107,6 +110,7 @@ def create_app(database_path: str | Path | None=None):
     application.state.search_engine = search_engine
     application.state.media_root = database.path.parent / 'uploads'
     application.state.storage = ObjectStorage.from_environment(application.state.media_root)
+    application.state.photo_search = photo_search.PhotoSearch.from_environment()
     templates = Jinja2Templates(directory=ROOT / 'app' / 'templates')
     application.mount('/static', StaticFiles(directory=ROOT / 'app' / 'static'), name='static')
 
@@ -331,7 +335,7 @@ def create_app(database_path: str | Path | None=None):
     async def admin_user_status(user_id: UserId, payload: UserStatusInput, user: Admin, connection: Connection):
         return (await admin.admin_user_status(user_id, payload, user, connection))
     def feature_endpoint(route):
-        handler=getattr(shops if route.module=='shops' else features,route.operation)
+        handler=getattr({'shops': shops, 'features': features, 'photo_search': photo_search}[route.module],route.operation)
         path_names=set(re.findall(r'\{(\w+)\}',route.path))
         async def endpoint(**arguments):
             if route.operation in CatalogCache.OPERATIONS:

@@ -7,5 +7,5 @@ re-enable specific services inside unittest.mock.patch.dict(os.environ, ...).
 """
 import os
 
-for _key in ('REDIS_URL', 'ELASTICSEARCH_URL', 'RABBITMQ_URL', 'MONGODB_URL', 'OSS_ENDPOINT'):
+for _key in ('REDIS_URL', 'ELASTICSEARCH_URL', 'RABBITMQ_URL', 'MONGODB_URL', 'OSS_ENDPOINT', 'PHOTO_SEARCH_API_KEY'):
     os.environ[_key] = ''

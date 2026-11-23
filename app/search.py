@@ -115,6 +115,29 @@ def search_arguments(arguments, active_store_ids, matched_store_ids):
     }
 
 
+def photo_search_arguments(keywords, active_store_ids):
+    """Build the Elasticsearch query used by photo recognition."""
+    should = []
+    for keyword in keywords:
+        pattern = '*' + escape_wildcard(keyword) + '*'
+        should.extend([
+            {'wildcard': {'name': {'value': pattern, 'case_insensitive': True}}},
+            {'wildcard': {'subtitle': {'value': pattern, 'case_insensitive': True}}},
+            {'wildcard': {'category': {'value': pattern, 'case_insensitive': True}}},
+        ])
+    return {
+        'query': {'bool': {'filter': [
+            {'term': {'is_active': True}},
+            {'terms': {'store_id': active_store_ids}},
+        ], 'must': [{'bool': {'should': should, 'minimum_should_match': 1}}]}},
+        'sort': [{'sales': 'desc'}, {'id': 'asc'}],
+        'from_': 0,
+        'size': 13,
+        'track_total_hits': False,
+        'source': ['id'],
+    }
+
+
 class SearchEngine:
     def __init__(self, url, alias, timeout=2.0):
         self.url, self.alias, self.timeout = url, alias, timeout
@@ -181,8 +204,28 @@ class SearchEngine:
             else:
                 response = await client.search(index=self.alias, **body)
             hits = response['hits']
-            return {'total': hits['total']['value'],
-                    'ids': [hit['_source']['id'] for hit in hits['hits']]}
+            return {'ids': [hit['_source']['id'] for hit in hits['hits']]}
+        except Exception:
+            self._trip()
+            return None
+
+    async def read_photo(self, connection, keywords):
+        """Return photo-match ids from ES, or None to use the SQL fallback."""
+        if not keywords or time.monotonic() < self._disabled_until:
+            return None
+        try:
+            active = [row['id'] for row in (await connection.execute(
+                'SELECT id FROM stores WHERE is_active=1')).fetchall()]
+            if not active:
+                return {'ids': []}
+            body = photo_search_arguments(keywords, active)
+            client, synchronous = self._client(connection)
+            if synchronous:
+                response = client.search(index=self.alias, **body)
+            else:
+                response = await client.search(index=self.alias, **body)
+            hits = response['hits']
+            return {'ids': [hit['_source']['id'] for hit in hits['hits']]}
         except Exception:
             self._trip()
             return None

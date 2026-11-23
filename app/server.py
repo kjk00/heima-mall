@@ -15,7 +15,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlsplit
 
-from app import admin, logic, features,shops
+from app import admin, logic, features, shops, photo_search
 from app.database import Database
 from app.cache import CatalogCache
 from app.config import load_environment
@@ -68,6 +68,7 @@ class MallApplication:
         self.state.search_engine = SearchEngine.from_environment(self.state.database.path)
         self.state.media_root = self.state.database.path.parent / 'uploads'
         self.state.storage = ObjectStorage.from_environment(self.state.media_root)
+        self.state.photo_search = photo_search.PhotoSearch.from_environment()
         self.routes = [(route, re.compile('^' + re.sub(r'\{(\w+)\}', r'(?P<\1>[^/]+)', route.path) + '$')) for route in ROUTES]
 
     def __call__(self, environ, start_response):
@@ -143,7 +144,9 @@ class MallApplication:
             except CookieError:
                 pass
             request = SimpleNamespace(cookies={key: item.value for key, item in cookies.items()},
-                                      app=self, client=SimpleNamespace(host=environ.get('REMOTE_ADDR', 'local')))
+                                      app=self, client=SimpleNamespace(host=environ.get('REMOTE_ADDR', 'local')),
+                                      headers={key[5:].lower().replace('_', '-'): value
+                                               for key, value in environ.items() if key.startswith('HTTP_')})
             if route.admin:
                 with self.state.database.connection() as auth_connection:
                     asyncio.run(admin.current_admin(request, SyncConnectionAdapter(auth_connection)))
@@ -156,7 +159,7 @@ class MallApplication:
                 if content_type != 'application/json':
                     raise MallError(415, '请求内容必须为 application/json')
                 length = int(environ.get('CONTENT_LENGTH') or 0)
-                maximum = 3 * 1024 * 1024 if route.operation == 'admin_upload_image' else 16384
+                maximum = 3 * 1024 * 1024 if route.operation in {'admin_upload_image', 'search_photo'} else 16384
                 if not 0 < length <= maximum:
                     raise MallError(413 if length > maximum else 400, '请求正文为空或过大')
                 try:
@@ -186,7 +189,8 @@ class MallApplication:
                     raise MallError(422, '排序方式不正确')
             if route.operation in {'admin_products', 'admin_orders', 'admin_users'}:
                 arguments.update(admin.query_arguments(query, route.operation))
-            handler = getattr(shops if route.module=='shops' else features if route.module else admin if route.operation.startswith('admin_') else logic, route.operation)
+            module = {'shops': shops, 'features': features, 'photo_search': photo_search}.get(route.module)
+            handler = getattr(module or (admin if route.operation.startswith('admin_') else logic), route.operation)
             parameters = inspect.signature(handler).parameters
             if route.module:
                 if 'store_id' in parameters and 'store_id' not in arguments:

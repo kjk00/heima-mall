@@ -397,6 +397,16 @@ Apple Silicon 上 7.17 自带的 JDK 与机器学习原生组件是 x86_64，需
 
 ## 商品内容存储：MySQL + MongoDB + MinIO
 
+### 照片识别商品
+
+搜索栏中的“照片识别”支持选择本地照片。预览后点击“开始识别”，服务端调用视觉模型获取中文商品类名，再从商城实时查询相关在售商品；结果可打开商品详情或点击关键词继续文字搜索。识别用于查找相似品类，不保证识别品牌或同款。
+
+在本地 `.env` 中配置 `PHOTO_SEARCH_API_KEY`，重启应用启用；`PHOTO_SEARCH_BASE_URL` 默认 `https://api.openai.com/v1`，`PHOTO_SEARCH_MODEL` 默认 `gpt-4.1-mini`。可改为支持图像消息、JSON 输出及相同 Chat Completions 请求字段的 HTTPS 接口与模型。未配置密钥时界面明确提示尚未开通，不伪造识别结果。密钥仅用于后端请求，不能放进前端代码或提交到 Git。
+
+图片在浏览器压缩至最长边 1280 像素、最多 2 MB，后端再次验证、重编码以移除 EXIF 等元数据；商城不保存识别照片。用户点击识别前会看到将图片发送至识别服务的提示，服务商的数据处理政策仍适用。服务调用超时为 20 秒；每个客户端地址每分钟最多 5 次、全局最多 30 次，同时最多 2 次识别。配置 `REDIS_URL` 后，分钟配额通过 Redis 在多进程间共享；未配置 Redis 时降级为单进程限流。若应用位于反向代理后，请将可信代理网段写入 `PHOTO_SEARCH_TRUSTED_PROXY`，系统只会接受这些代理连接提供的 `X-Forwarded-For`。文字搜索在识别服务未配置或故障时仍可使用。
+
+接口：`GET /api/search/photo/status` 查询启用状态；`POST /api/search/photo` 接收 `{filename, data_base64}`，返回 `{keywords, items, total, has_more}`，最多展示 12 件相关商品；`total` 为实际返回的商品数，`has_more` 表示还有匹配项。写请求沿用 `X-Requested-With: HeimaMall` 与同源校验。回归测试：`.venv/bin/python -m pytest tests/test_photo_search.py -q`，通过隔离模拟验证识别接口，不消耗真实 API 额度。
+
 商家发布商品时按内容类型分流存储，读取时再组装，兼顾事务一致性与高并发读：
 
 - **写入**：基础信息（名称、价格、库存等）与**详情 HTML** 写入 MySQL `products` 表（`detail_html` 列）；**商品参数**（键值对）在同一事务中写入 MySQL `params_json` 列，提交后再尽力镜像到 **MongoDB** `product_params` 集合（文档包含商品 `_id`、`params` 和 SQL 商品 `version`）。MongoDB 按版本原子更新，延迟到达的旧写入不能覆盖新版本；**图片**上传到 **MinIO**（S3/OSS 兼容对象存储），URL 仍为 `/media/<sha256>.<ext>`。

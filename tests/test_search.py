@@ -78,6 +78,17 @@ class SearchArgumentsTests(unittest.TestCase):
         row['original_price'] = 100
         self.assertFalse(search.document(row)['on_sale'])
 
+    def test_photo_search_uses_active_catalog_filters_and_bounded_index_hits(self):
+        body = search.photo_search_arguments(['耳机', '音箱'], [1, 2, 3])
+        filters = body['query']['bool']['filter']
+        self.assertIn({'term': {'is_active': True}}, filters)
+        self.assertIn({'terms': {'store_id': [1, 2, 3]}}, filters)
+        clauses = body['query']['bool']['must'][0]['bool']['should']
+        self.assertEqual(len(clauses), 6)
+        self.assertEqual(body['size'], 13)
+        self.assertFalse(body['track_total_hits'])
+        self.assertEqual(body['sort'], [{'sales': 'desc'}, {'id': 'asc'}])
+
 
 class OutboxTriggerTests(unittest.TestCase):
     def setUp(self):
@@ -304,7 +315,7 @@ class SearchEngineReadTests(unittest.TestCase):
             async with self.database.connection() as connection:
                 return await self.engine.read(connection, self.arguments)
         result = run(scenario())
-        self.assertEqual(result, {'total': 7, 'ids': [5, 3]})
+        self.assertEqual(result, {'ids': [5, 3]})
         self.assertEqual(calls[0]['index'], 'alias-test')
         self.assertTrue(calls[0]['track_total_hits'])
 
@@ -338,6 +349,19 @@ class SearchEngineReadTests(unittest.TestCase):
         store_clause = [clause for clause in should if 'terms' in clause]
         self.assertEqual(len(store_clause), 1)
         self.assertEqual(sorted(store_clause[0]['terms']['store_id']), [1, 2])
+
+    def test_read_photo_returns_bounded_ids_without_total_count_query(self):
+        hits = [{'_source': {'id': item_id}} for item_id in range(13)]
+        calls = self.stub_client(response={'hits': {'hits': hits}})
+        async def scenario():
+            async with self.database.connection() as connection:
+                return await self.engine.read_photo(connection, ['耳机', '数码科技'])
+        self.assertEqual(run(scenario()), {'ids': list(range(13))})
+        self.assertEqual(calls[0]['size'], 13)
+        self.assertFalse(calls[0]['track_total_hits'])
+        fields = [next(iter(clause['wildcard'])) for clause in
+                  calls[0]['query']['bool']['must'][0]['bool']['should']]
+        self.assertEqual(fields, ['name', 'subtitle', 'category'] * 2)
 
 
 class ProductsRoutingTests(unittest.TestCase):
