@@ -80,6 +80,7 @@ async def update_settings(payload,user,connection):
 
 async def change_password(payload,user,response,connection):
     async with transaction(connection):
+        await connection.lock_user(user['id'])
         row = (await connection.execute('SELECT password_hash FROM users WHERE id=?',(user['id'],))).fetchone()
         if not (await verify_password_async(payload.old_password,row['password_hash'])): raise MallError(400,'原密码不正确')
         (await connection.execute('UPDATE users SET password_hash=? WHERE id=?',((await hash_password_async(payload.new_password)),user['id'])))

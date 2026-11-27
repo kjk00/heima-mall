@@ -386,9 +386,14 @@ class ShipmentInput:
 class ImageUploadInput:
     filename: str
     data_base64: str
+    category: str = field(default='', kw_only=True)
+    store_id: int | None = field(default=None, kw_only=True)
     __pydantic_config__ = {'extra': 'forbid'}
 
     def __post_init__(self):
         self.filename = text(self.filename, '图片文件名', 1, 200)
         self.data_base64 = text(self.data_base64, '图片内容', 1, 2_800_000, strip=False)
+        self.category = text(self.category, '商品分类', 0, 30)
+        if self.store_id is not None:
+            self.store_id = number(self.store_id, '店铺编号', 1, 2**63 - 1)
 

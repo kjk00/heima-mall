@@ -1,11 +1,14 @@
+import asyncio
 import tempfile
 import threading
 import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from unittest.mock import patch
 
 from app.server import MallApplication
+from app import logic
 from app.security import token_hash, verify_password
 from tests.client import Client
 
@@ -102,6 +105,51 @@ class MallTests(unittest.TestCase):
         with self.app.state.database.connection() as connection:
             code = connection.execute('SELECT code FROM login_captchas WHERE id=?', (captcha['captcha_id'],)).fetchone()['code']
         self.assertEqual(self.client.post('/api/auth/login', dict(credentials, captcha_id=captcha['captcha_id'], captcha_code=code.lower()))['status'], 200)
+
+    def test_concurrent_login_attempts_consume_captcha_only_once(self):
+        captcha = self.client.get('/api/auth/captcha')['json']
+        with self.app.state.database.connection() as connection:
+            code = connection.execute('SELECT code FROM login_captchas WHERE id=?', (captcha['captcha_id'],)).fetchone()['code']
+        clients = [Client(self.app), Client(self.app)]
+        start = threading.Barrier(2)
+        payload = {'phone': self.credentials['phone'], 'password': self.credentials['password'],
+                   'captcha_id': captcha['captcha_id'], 'captcha_code': code}
+        def login(client):
+            start.wait()
+            return client.post('/api/auth/login', payload)
+        with ThreadPoolExecutor(2) as pool:
+            results = list(pool.map(login, clients))
+        self.assertEqual(sorted(result['status'] for result in results), [200, 400])
+        self.assertEqual(sorted(client.get('/api/auth/me')['status'] for client in clients), [200, 401])
+
+    def test_login_verified_before_password_change_cannot_create_session_afterward(self):
+        login_client = Client(self.app)
+        captcha = login_client.get('/api/auth/captcha')['json']
+        with self.app.state.database.connection() as connection:
+            code = connection.execute('SELECT code FROM login_captchas WHERE id=?', (captcha['captcha_id'],)).fetchone()['code']
+        verified = threading.Event()
+        resume = threading.Event()
+        verify = logic.verify_password_async
+        async def delayed_verify(password, encoded):
+            result = await verify(password, encoded)
+            if password == self.credentials['password']:
+                verified.set()
+                await asyncio.to_thread(resume.wait, 10)
+            return result
+        payload = {'phone': self.credentials['phone'], 'password': self.credentials['password'],
+                   'captcha_id': captcha['captcha_id'], 'captcha_code': code}
+        with ThreadPoolExecutor(1) as pool, patch.object(logic, 'verify_password_async', delayed_verify):
+            pending = pool.submit(login_client.post, '/api/auth/login', payload)
+            self.assertTrue(verified.wait(10), 'login did not reach its password-verification checkpoint')
+            changed = self.client.post('/api/settings/password',
+                                       {'old_password': self.credentials['password'], 'new_password': 'updatedpass123'})
+            self.assertEqual(changed['status'], 200, changed)
+            resume.set()
+            self.assertEqual(pending.result(timeout=10)['status'], 401)
+        self.assertEqual(login_client.get('/api/auth/me')['status'], 401)
+        self.assertEqual(self.client.get('/api/auth/me')['status'], 200)
+        with self.app.state.database.connection() as connection:
+            self.assertEqual(connection.execute('SELECT COUNT(*) FROM sessions WHERE user_id=?', (self.user['id'],)).fetchone()[0], 1)
 
     def test_captcha_issue_throttle_returns_429(self):
         for _ in range(30):

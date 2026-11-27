@@ -397,15 +397,25 @@ Apple Silicon 上 7.17 自带的 JDK 与机器学习原生组件是 x86_64，需
 
 ## 商品内容存储：MySQL + MongoDB + MinIO
 
-### 照片识别商品
+### 图片搜索商品
 
-搜索栏中的“照片识别”支持选择本地照片。预览后点击“开始识别”，服务端调用视觉模型获取中文商品类名，再从商城实时查询相关在售商品；结果可打开商品详情或点击关键词继续文字搜索。识别用于查找相似品类，不保证识别品牌或同款。
+搜索栏中的“图片搜索”支持选择本地照片，不使用机器学习模型或外部识图 API。服务端用 Pillow 提取 64 位差分感知哈希、粗粒度 RGB 直方图、4×4 空间颜色布局和边缘方向直方图，再用加权距离全量排序商品特征；SQL 仍以当前商品和店铺状态、库存、可选类目及店铺条件过滤候选。图片只在商城服务器处理，查询原图不会写入索引或商品目录；持久索引保存商品图片键和轻量特征。
 
-在本地 `.env` 中配置 `PHOTO_SEARCH_API_KEY`，重启应用启用；`PHOTO_SEARCH_BASE_URL` 默认 `https://api.openai.com/v1`，`PHOTO_SEARCH_MODEL` 默认 `gpt-4.1-mini`。可改为支持图像消息、JSON 输出及相同 Chat Completions 请求字段的 HTTPS 接口与模型。未配置密钥时界面明确提示尚未开通，不伪造识别结果。密钥仅用于后端请求，不能放进前端代码或提交到 Git。
+这是传统图像特征检索：适合找颜色、构图、轮廓或重复图相近的商品，不能理解文字语义、材质和商品用途。材质等属性仍需结构化标签过滤。索引使用线性全量比对，商品规模增长后需基于实测延迟决定是否换用更快的非模型索引结构。
 
-图片在浏览器压缩至最长边 1280 像素、最多 2 MB，后端再次验证、重编码以移除 EXIF 等元数据；商城不保存识别照片。用户点击识别前会看到将图片发送至识别服务的提示，服务商的数据处理政策仍适用。服务调用超时为 20 秒；每个客户端地址每分钟最多 5 次、全局最多 30 次，同时最多 2 次识别。配置 `REDIS_URL` 后，分钟配额通过 Redis 在多进程间共享；未配置 Redis 时降级为单进程限流。若应用位于反向代理后，请将可信代理网段写入 `PHOTO_SEARCH_TRUSTED_PROXY`，系统只会接受这些代理连接提供的 `X-Forwarded-For`。文字搜索在识别服务未配置或故障时仍可使用。
+用人工核验的查询图和相关商品 ID 建立 JSONL 标注集，每行一条记录；图片路径相对于 JSONL 文件所在目录：
 
-接口：`GET /api/search/photo/status` 查询启用状态；`POST /api/search/photo` 接收 `{filename, data_base64}`，返回 `{keywords, items, total, has_more}`，最多展示 12 件相关商品；`total` 为实际返回的商品数，`has_more` 表示还有匹配项。写请求沿用 `X-Requested-With: HeimaMall` 与同源校验。回归测试：`.venv/bin/python -m pytest tests/test_photo_search.py -q`，通过隔离模拟验证识别接口，不消耗真实 API 额度。
+```json
+{"image":"queries/blue-mug.jpg","relevant_product_ids":[12,18],"category":"家居生活","store_id":3}
+```
+
+`category` 和 `store_id` 可省略。相关 ID 应属于该查询的筛选范围，并对应当前上架、有库存且店铺营业的商品；评估工具会校验并按 JSONL 行号报告不符合条件的标注。运行 `.venv/bin/python scripts/evaluate_visual_search.py data/visual-eval/queries.jsonl --k 10`，工具会按当前目录状态、库存、类目和店铺条件过滤结果，并输出逐查询结果及宏平均 HitRate@K、Precision@K、Recall@K、MRR；其中 Precision@K 的分母固定为 K。评估使用只读数据库事务和只读商品图访问，不运行数据库初始化或创建 OSS bucket；商品目录版本落后时，搜索会刷新本地特征索引。评估准确率需用真实商品图和人工标注集测量。
+
+栅格商品图片无需额外依赖；目录含 SVG 演示素材时，可安装 CairoSVG：`.venv/bin/pip install -e '.[visual]'`。设置 `VISUAL_SEARCH_INDEX_PATH`（默认 `data/visual-search`）和 `VISUAL_SEARCH_CANDIDATES`（默认 200，允许 20–1000），首次部署或图片特征算法升级后运行 `.venv/bin/python scripts/rebuild_visual_index.py`。脚本只读取当前上架、有库存且店铺营业的商品图。商品图、库存或店铺营业状态变化后，搜索会按目录版本增量更新本地特征索引；类目和库存仍由 SQL 实时过滤。
+
+若本地特征索引未配置，仍可用文字搜索；如显式配置旧版兼容用的 `PHOTO_SEARCH_API_KEY`，系统会优先使用本地特征搜索，否则可将处理后的图片发给所配置的关键词识别服务。上传照片在浏览器压缩至最长边 1280 像素、最多 2 MB，后端再次验证并移除 EXIF 等元数据。两种模式均使用每客户端每分钟 5 次、全局每分钟 30 次、同时最多 2 次请求的限流；配置 `REDIS_URL` 后分钟配额在多进程间共享。若应用位于反向代理后，可设置 `PHOTO_SEARCH_TRUSTED_PROXY`。
+
+接口：`GET /api/search/photo/status` 返回 `{enabled, mode}`；`POST /api/search/photo` 接收 `{filename, data_base64, category?, store_id?}`，返回 `{mode, keywords, items, total, has_more}`，最多展示 12 件商品。`mode` 为 `visual` 时 `keywords` 为空，`total` 是实际返回数，`has_more` 表示当前候选中还有符合业务过滤的商品。写请求沿用 `X-Requested-With: HeimaMall` 与同源校验。回归测试：`.venv/bin/python -m pytest tests/test_photo_search.py tests/test_photo_search_blackbox.py tests/test_photo_search_whitebox.py tests/test_visual_search.py -q`；测试不下载模型、不调用外部 API。
 
 商家发布商品时按内容类型分流存储，读取时再组装，兼顾事务一致性与高并发读：
 

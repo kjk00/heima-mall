@@ -3,12 +3,12 @@
   const dialog = $('#photo-search-dialog'), status = $('#photo-search-status');
   const submit = $('#photo-search-submit'), preview = $('#photo-search-preview');
   const upload = $('#photo-search-upload'), uploadFile = $('#photo-search-upload-file');
-  let generation = 0, available = false, selected = null, previewURL = null, controller = null;
+  let generation = 0, available = false, mode = 'disabled', selected = null, previewURL = null, controller = null;
 
   function clearPhoto() {
     ++generation;
     controller?.abort(); controller = null;
-    selected = null; submit.disabled = true; submit.textContent = '开始识别';
+    selected = null; submit.disabled = true; submit.textContent = '开始搜索';
     if (previewURL) URL.revokeObjectURL(previewURL);
     previewURL = null; preview.removeAttribute('src');
     $('#photo-search-preview-wrap').hidden = true;
@@ -19,7 +19,7 @@
   }
 
   async function open() {
-    clearPhoto(); available = false; upload.disabled = true;
+    clearPhoto(); available = false; mode = 'disabled'; upload.disabled = true;
     window.mallSearch?.hide(); showDialog('photo-search-dialog');
     const current = generation;
     status.textContent = '正在检查识别服务…';
@@ -27,8 +27,16 @@
       const result = await api('/search/photo/status');
       if (current !== generation || !dialog.open) return;
       available = result.enabled === true;
+      mode = ['visual', 'keywords'].includes(result.mode) ? result.mode : 'keywords';
       upload.disabled = !available;
-      status.textContent = available ? '选择一张商品照片，预览后开始识别。' : '照片识别尚未开通，你仍可使用搜索框输入商品名称。';
+      $('#photo-search-privacy').textContent = !available
+        ? '图片搜索服务尚未启用。商城不会上传或保存你选择的照片。'
+        : mode === 'visual'
+          ? '图片会在商城服务器本地生成视觉特征并匹配商品，不保存原图，也不会发送到第三方。'
+          : '点击“开始搜索”后，图片将发送至图像识别服务。商城不会保存这张照片，请避免上传含个人隐私的图片。';
+      status.textContent = available
+        ? (mode === 'visual' ? '选择一张商品照片，按视觉相似度查找在售商品。' : '选择一张商品照片，识别后为你查找商城内的相关好物。')
+        : '照片搜索尚未开通，你仍可使用搜索框输入商品名称。';
     } catch {
       if (current === generation && dialog.open) status.textContent = '暂时无法连接识别服务，请稍后重新打开。';
     }
@@ -76,7 +84,7 @@
       if (current !== generation || !dialog.open) return;
       selected = result.data; previewURL = URL.createObjectURL(result.blob); preview.src = previewURL;
       $('#photo-search-preview-wrap').hidden = false; submit.disabled = false;
-      status.textContent = '照片已准备好，点击“开始识别”。';
+      status.textContent = '照片已准备好，点击“开始搜索”。';
     } catch (error) {
       if (current === generation && dialog.open) status.textContent = error.message;
     }
@@ -87,21 +95,27 @@
     const current = generation;
     controller = new AbortController(); submit.disabled = true; submit.textContent = '正在识别…';
     $('#photo-search-results').hidden = true;
-    status.textContent = '正在识别商品并查找商城好物，请稍候…';
+    status.textContent = mode === 'visual' ? '正在计算图片特征并搜索相似商品，请稍候…' : '正在识别商品并查找商城好物，请稍候…';
     try {
       const result = await api('/search/photo', {method: 'POST', signal: controller.signal,
-        body: JSON.stringify({filename: 'photo.jpg', data_base64: selected})});
+        body: JSON.stringify({filename: 'photo.jpg', data_base64: selected,
+          category: state.category || '', store_id: state.storeId ? Number(state.storeId) : null})});
       if (current !== generation || !dialog.open) return;
       const keywords = result.keywords || [], products = result.items || [];
       $('#photo-search-results').hidden = false;
       $('#photo-search-keywords').innerHTML = keywords.map(word => '<button type="button" data-photo-keyword="' + escapeHTML(word) + '">' + escapeHTML(word) + ' ↗</button>').join('');
       $('#photo-search-products').innerHTML = products.map(product => '<button type="button" class="photo-search-product" data-photo-product="' + product.id + '"><img src="' + escapeHTML(image(product)) + '" alt=""><span><strong>' + escapeHTML(product.name) + '</strong><small>' + escapeHTML(product.store_name) + '</small><b>¥' + money(product.price) + '</b></span></button>').join('');
-      $('#photo-search-result-hint').textContent = products.length ? (result.has_more ? '相关商品较多，当前展示前 12 件；点击查看详情，也可点击关键词继续搜索。' : '找到 ' + products.length + ' 件相关商品，点击查看详情，也可点击关键词继续搜索。') : keywords.length ? '已识别出商品类型，商城暂未找到相关在售商品。可以点击关键词继续搜索。' : '没有识别到清晰的商品，请靠近主体重拍。';
-      status.textContent = '识别完成。结果仅供选购参考，请核对商品详情。';
+      $('#photo-search-result-hint').textContent = products.length
+        ? (result.mode === 'visual'
+          ? (result.has_more ? '按图片相似度排序，当前展示前 12 件符合类目和库存条件的在售商品。' : '找到 ' + products.length + ' 件符合类目和库存条件的视觉相似商品。')
+          : (result.has_more ? '相关商品较多，当前展示前 12 件；点击查看详情，也可点击关键词继续搜索。' : '找到 ' + products.length + ' 件相关商品，点击查看详情，也可点击关键词继续搜索。'))
+        : result.mode === 'visual' ? '没有找到符合当前类目和库存条件的相似在售商品，可以调整分类后重试。'
+          : keywords.length ? '已识别出商品类型，商城暂未找到相关在售商品。可以点击关键词继续搜索。' : '没有识别到清晰的商品，请靠近主体重拍。';
+      status.textContent = '图片搜索完成。结果仅供选购参考，请核对商品详情。';
     } catch (error) {
       if (current === generation && dialog.open && error.name !== 'AbortError') status.textContent = friendlyError(error);
     } finally {
-      if (current === generation && dialog.open) { controller = null; submit.disabled = !selected; submit.textContent = '重新识别'; }
+      if (current === generation && dialog.open) { controller = null; submit.disabled = !selected; submit.textContent = '重新搜索'; }
     }
   }
 

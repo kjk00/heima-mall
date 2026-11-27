@@ -79,10 +79,12 @@ class SearchArgumentsTests(unittest.TestCase):
         self.assertFalse(search.document(row)['on_sale'])
 
     def test_photo_search_uses_active_catalog_filters_and_bounded_index_hits(self):
-        body = search.photo_search_arguments(['耳机', '音箱'], [1, 2, 3])
+        body = search.photo_search_arguments(['耳机', '音箱'], [1, 2, 3], '数码科技', 2)
         filters = body['query']['bool']['filter']
         self.assertIn({'term': {'is_active': True}}, filters)
         self.assertIn({'terms': {'store_id': [1, 2, 3]}}, filters)
+        self.assertIn({'term': {'category': '数码科技'}}, filters)
+        self.assertIn({'term': {'store_id': 2}}, filters)
         clauses = body['query']['bool']['must'][0]['bool']['should']
         self.assertEqual(len(clauses), 6)
         self.assertEqual(body['size'], 13)
@@ -315,7 +317,7 @@ class SearchEngineReadTests(unittest.TestCase):
             async with self.database.connection() as connection:
                 return await self.engine.read(connection, self.arguments)
         result = run(scenario())
-        self.assertEqual(result, {'ids': [5, 3]})
+        self.assertEqual(result, {'total': 7, 'ids': [5, 3]})
         self.assertEqual(calls[0]['index'], 'alias-test')
         self.assertTrue(calls[0]['track_total_hits'])
 
@@ -350,15 +352,25 @@ class SearchEngineReadTests(unittest.TestCase):
         self.assertEqual(len(store_clause), 1)
         self.assertEqual(sorted(store_clause[0]['terms']['store_id']), [1, 2])
 
+    def test_read_accepts_integer_total_from_older_elasticsearch(self):
+        self.stub_client(response={'hits': {'total': 4, 'hits': [{'_source': {'id': 2}}]}})
+        async def scenario():
+            async with self.database.connection() as connection:
+                return await self.engine.read(connection, self.arguments)
+        self.assertEqual(run(scenario()), {'total': 4, 'ids': [2]})
+
     def test_read_photo_returns_bounded_ids_without_total_count_query(self):
         hits = [{'_source': {'id': item_id}} for item_id in range(13)]
         calls = self.stub_client(response={'hits': {'hits': hits}})
         async def scenario():
             async with self.database.connection() as connection:
-                return await self.engine.read_photo(connection, ['耳机', '数码科技'])
+                return await self.engine.read_photo(connection, ['耳机', '数码科技'], '数码科技', 2)
         self.assertEqual(run(scenario()), {'ids': list(range(13))})
         self.assertEqual(calls[0]['size'], 13)
         self.assertFalse(calls[0]['track_total_hits'])
+        filters = calls[0]['query']['bool']['filter']
+        self.assertIn({'term': {'category': '数码科技'}}, filters)
+        self.assertIn({'term': {'store_id': 2}}, filters)
         fields = [next(iter(clause['wildcard'])) for clause in
                   calls[0]['query']['bool']['must'][0]['bool']['should']]
         self.assertEqual(fields, ['name', 'subtitle', 'category'] * 2)
@@ -383,6 +395,20 @@ class ProductsRoutingTests(unittest.TestCase):
         self.assertEqual([item['id'] for item in result['items']], [2, 1])
         self.assertEqual(result['total'], 2)
         self.assertIn('store_name', result['items'][0])
+
+    def test_real_search_engine_result_contract_reaches_products(self):
+        engine = search.SearchEngine('http://unused', 'alias-test')
+        class Client:
+            async def search(self, **kwargs):
+                return {'hits': {'total': {'value': 7}, 'hits': [
+                    {'_source': {'id': 5}}, {'_source': {'id': 3}}]}}
+        engine._client = lambda connection: (Client(), False)
+        async def scenario():
+            async with self.database.connection() as connection:
+                return await logic.products(connection, search=engine)
+        result = run(scenario())
+        self.assertEqual([item['id'] for item in result['items']], [5, 3])
+        self.assertEqual(result['total'], 7)
 
     def test_inactive_rows_are_filtered_from_stale_es_hits(self):
         with self.database.database.connection() as connection:

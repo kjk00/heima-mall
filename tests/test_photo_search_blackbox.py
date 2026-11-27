@@ -26,7 +26,7 @@ class PhotoSearchBlackBoxTests(unittest.TestCase):
     def test_b00_storefront_offers_photo_selection_without_camera_capture(self):
         response = self.client.get('/')
         self.assertEqual(response['status'], 200)
-        self.assertIn('aria-label="照片识别商品"'.encode(), response['body'])
+        self.assertIn('aria-label="关闭图片搜索"'.encode(), response['body'])
         self.assertIn(b'id="photo-search-upload-file"', response['body'])
         self.assertNotIn(b'photo-search-camera', response['body'])
         self.assertNotIn(b'capture="environment"', response['body'])
@@ -40,9 +40,10 @@ class PhotoSearchBlackBoxTests(unittest.TestCase):
     def test_b01_status_reports_feature_state_without_exposing_configuration(self):
         response = self.client.get('/api/search/photo/status')
         self.assertEqual(response['status'], 200)
-        self.assertEqual(response['json'], {'enabled': False})
+        self.assertEqual(response['json'], {'enabled': False, 'mode': 'disabled'})
         self.enable(['耳机'])
-        self.assertEqual(self.client.get('/api/search/photo/status')['json'], {'enabled': True})
+        self.assertEqual(self.client.get('/api/search/photo/status')['json'],
+                         {'enabled': True, 'mode': 'keywords'})
 
     def test_b02_valid_photo_returns_live_catalog_matches(self):
         service = self.enable(['耳机'])
@@ -55,11 +56,41 @@ class PhotoSearchBlackBoxTests(unittest.TestCase):
         self.assertTrue(all(item['is_active'] for item in body['items']))
         service.request_keywords.assert_awaited_once()
 
+    def test_b02a_visual_search_needs_no_api_key_and_applies_live_business_filters(self):
+        class FakeVisualSearch:
+            enabled = True
+
+            def __init__(self):
+                self.request = None
+
+            async def search_image(self, image_bytes, connection, storage, category='', store_id=None):
+                self.request = (image_bytes, category, store_id)
+                return [1, 5, 2]
+
+            def close(self):
+                pass
+
+        visual = FakeVisualSearch()
+        self.app.state.photo_search = photo_search.PhotoSearch(visual_search=visual)
+        with self.app.state.database.connection() as connection:
+            connection.execute('UPDATE products SET stock=0 WHERE id=1')
+        request = self.payload | {'category': '数码科技', 'store_id': 2}
+        response = self.client.post('/api/search/photo', request)
+        self.assertEqual(response['status'], 200, response)
+        self.assertEqual(self.client.get('/api/search/photo/status')['json'],
+                         {'enabled': True, 'mode': 'visual'})
+        self.assertEqual(response['json']['mode'], 'visual')
+        self.assertEqual(response['json']['keywords'], [])
+        self.assertEqual([item['id'] for item in response['json']['items']], [5])
+        self.assertEqual(visual.request[1:], ('数码科技', 2))
+        self.assertTrue(visual.request[0])
+
     def test_b03_no_detected_product_returns_empty_result(self):
         self.enable([])
         response = self.client.post('/api/search/photo', self.payload)
         self.assertEqual(response['status'], 200)
-        self.assertEqual(response['json'], {'keywords': [], 'items': [], 'total': 0, 'has_more': False})
+        self.assertEqual(response['json'],
+                         {'mode': 'keywords', 'keywords': [], 'items': [], 'total': 0, 'has_more': False})
 
     def test_b04_invalid_request_shapes_return_client_errors(self):
         self.enable(['耳机'])
@@ -97,6 +128,12 @@ class PhotoSearchBlackBoxTests(unittest.TestCase):
 
     def test_b07_inactive_product_and_store_are_not_returned(self):
         self.enable(['耳机'])
+        with self.app.state.database.connection() as connection:
+            connection.execute('UPDATE products SET stock=0 WHERE id=1')
+        self.assertEqual(self.client.post('/api/search/photo', self.payload)['json']['items'], [])
+        with self.app.state.database.connection() as connection:
+            connection.execute('UPDATE products SET stock=80 WHERE id=1')
+
         with self.app.state.database.connection() as connection:
             connection.execute("UPDATE products SET is_active=0 WHERE name LIKE '%耳机%'")
         self.assertEqual(self.client.post('/api/search/photo', self.payload)['json']['total'], 0)

@@ -115,7 +115,7 @@ def search_arguments(arguments, active_store_ids, matched_store_ids):
     }
 
 
-def photo_search_arguments(keywords, active_store_ids):
+def photo_search_arguments(keywords, active_store_ids, category='', store_id=None):
     """Build the Elasticsearch query used by photo recognition."""
     should = []
     for keyword in keywords:
@@ -125,11 +125,17 @@ def photo_search_arguments(keywords, active_store_ids):
             {'wildcard': {'subtitle': {'value': pattern, 'case_insensitive': True}}},
             {'wildcard': {'category': {'value': pattern, 'case_insensitive': True}}},
         ])
-    return {
-        'query': {'bool': {'filter': [
+    filters = [
             {'term': {'is_active': True}},
             {'terms': {'store_id': active_store_ids}},
-        ], 'must': [{'bool': {'should': should, 'minimum_should_match': 1}}]}},
+        ]
+    if category:
+        filters.append({'term': {'category': category}})
+    if store_id is not None:
+        filters.append({'term': {'store_id': store_id}})
+    return {
+        'query': {'bool': {'filter': filters,
+                           'must': [{'bool': {'should': should, 'minimum_should_match': 1}}]}},
         'sort': [{'sales': 'desc'}, {'id': 'asc'}],
         'from_': 0,
         'size': 13,
@@ -204,12 +210,15 @@ class SearchEngine:
             else:
                 response = await client.search(index=self.alias, **body)
             hits = response['hits']
-            return {'ids': [hit['_source']['id'] for hit in hits['hits']]}
+            total = hits['total']
+            if isinstance(total, dict):
+                total = total['value']
+            return {'total': total, 'ids': [hit['_source']['id'] for hit in hits['hits']]}
         except Exception:
             self._trip()
             return None
 
-    async def read_photo(self, connection, keywords):
+    async def read_photo(self, connection, keywords, category='', store_id=None):
         """Return photo-match ids from ES, or None to use the SQL fallback."""
         if not keywords or time.monotonic() < self._disabled_until:
             return None
@@ -218,7 +227,7 @@ class SearchEngine:
                 'SELECT id FROM stores WHERE is_active=1')).fetchall()]
             if not active:
                 return {'ids': []}
-            body = photo_search_arguments(keywords, active)
+            body = photo_search_arguments(keywords, active, category, store_id)
             client, synchronous = self._client(connection)
             if synchronous:
                 response = client.search(index=self.alias, **body)

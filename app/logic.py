@@ -32,9 +32,13 @@ async def login_captcha(request, connection):
 async def consume_captcha(connection, payload):
     if not payload.captcha_id or not payload.captcha_code:
         raise HTTPException(422, '请输入图形验证码')
-    row = (await connection.execute('SELECT code,expires_at FROM login_captchas WHERE id=?', (payload.captcha_id,))).fetchone()
-    await connection.execute('DELETE FROM login_captchas WHERE id=?', (payload.captcha_id,))
-    if not row or row['expires_at'] <= int(time.time()) or row['code'] != payload.captcha_code.upper():
+    async with transaction(connection):
+        row = (await connection.execute('SELECT code,expires_at FROM login_captchas WHERE id=?', (payload.captcha_id,))).fetchone()
+        deleted = await connection.execute('DELETE FROM login_captchas WHERE id=?', (payload.captcha_id,))
+        valid = (row is not None and deleted.rowcount == 1
+                 and row['expires_at'] > int(time.time())
+                 and row['code'] == payload.captcha_code.upper())
+    if not valid:
         raise HTTPException(400, '验证码不正确或已过期，请点击图片刷新后重试')
 
 async def current_user(request, connection):
@@ -160,14 +164,21 @@ async def login(payload, response, request, connection, admin_only=False):
         raise HTTPException(401, '手机号或密码不正确')
     if not row['is_active']:
         raise HTTPException(403, '账号已停用，请联系管理员')
-    if admin_only and row['role'] != 'admin':
-        raise HTTPException(403, '该账号没有后台管理权限')
-    if admin_only:
-        from app.admin import require_admin
-        require_admin(dict(row))
-    token = (await create_session(connection, row['id']))
+    async with transaction(connection):
+        await connection.lock_user(row['id'])
+        current = (await connection.execute('SELECT * FROM users WHERE id=?', (row['id'],))).fetchone()
+        if not current or current['password_hash'] != encoded:
+            raise HTTPException(401, '手机号或密码不正确')
+        if not current['is_active']:
+            raise HTTPException(403, '账号已停用，请联系管理员')
+        if admin_only:
+            from app.admin import require_admin
+            if current['role'] != 'admin':
+                raise HTTPException(403, '该账号没有后台管理权限')
+            require_admin(dict(current))
+        token = await create_session(connection, current['id'])
     session_cookie(response, token)
-    return {key: row[key] for key in ('id','name','phone','role','is_active','store_id','is_super_admin')}
+    return {key: current[key] for key in ('id','name','phone','role','is_active','store_id','is_super_admin')}
 
 def me(user):
     return user

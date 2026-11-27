@@ -233,7 +233,8 @@ class PhotoSearchHTTPTests(unittest.TestCase):
         return instance
 
     def test_unconfigured_feature_is_explicit_and_never_calls_provider(self):
-        self.assertEqual(self.client.get('/api/search/photo/status')['json'], {'enabled': False})
+        self.assertEqual(self.client.get('/api/search/photo/status')['json'],
+                         {'enabled': False, 'mode': 'disabled'})
         response = self.client.post('/api/search/photo', self.payload)
         self.assertEqual(response['status'], 503)
         self.assertNotIn('API_KEY', response['json']['detail'])
@@ -250,6 +251,27 @@ class PhotoSearchHTTPTests(unittest.TestCase):
         self.assertEqual(result['json']['items'], [])
         self.assertEqual(result['json']['total'], 0)
         self.assertFalse((self.path.parent / 'uploads').exists())
+
+    def test_photo_search_fills_partial_or_empty_index_results_from_live_catalog(self):
+        service = self.enable(['数码科技'])
+        self.app.state.search_engine = None
+        baseline = self.client.post('/api/search/photo', self.payload)['json']
+        expected_ids = [item['id'] for item in baseline['items']]
+        self.assertGreater(len(expected_ids), 1)
+
+        class FakeSearch:
+            def __init__(self, ids):
+                self.ids = ids
+            async def read_photo(self, connection, keywords, category='', store_id=None):
+                return {'ids': self.ids}
+
+        for ids in ([], expected_ids[:1], [999999]):
+            with self.subTest(indexed_ids=ids):
+                self.app.state.search_engine = FakeSearch(ids)
+                service.attempts.clear()
+                result = self.client.post('/api/search/photo', self.payload)
+                self.assertEqual(result['status'], 200, result)
+                self.assertEqual([item['id'] for item in result['json']['items']], expected_ids)
 
     def test_catalog_matching_checks_category_and_escapes_like_wildcards(self):
         self.enable(['数码科技'])
@@ -297,7 +319,7 @@ class PhotoSearchHTTPTests(unittest.TestCase):
         self.assertEqual(self.client.post('/api/search/photo', self.payload)['json']['items'], [])
         self.enable([])
         self.assertEqual(self.client.post('/api/search/photo', self.payload)['json'],
-                         {'keywords': [], 'items': [], 'total': 0, 'has_more': False})
+                         {'mode': 'keywords', 'keywords': [], 'items': [], 'total': 0, 'has_more': False})
 
     def test_public_endpoint_still_requires_same_origin_request_protection(self):
         self.enable(['耳机'])
@@ -319,10 +341,12 @@ class PhotoSearchHTTPTests(unittest.TestCase):
         image = Image.frombytes('RGB', (200, 200), os.urandom(200 * 200 * 3))
         output = io.BytesIO()
         image.save(output, format='PNG')
-        payload = {'filename': 'photo.png', 'data_base64': base64.b64encode(output.getvalue()).decode()}
+        payload = {'filename': 'photo.png', 'data_base64': base64.b64encode(output.getvalue()).decode(),
+                   'category': '数码科技', 'store_id': 2}
         self.assertGreater(len(payload['data_base64']), 16384)
         with TestClient(app) as client:
-            self.assertEqual(client.get('/api/search/photo/status').json(), {'enabled': True})
+            self.assertEqual(client.get('/api/search/photo/status').json(),
+                             {'enabled': True, 'mode': 'keywords'})
             result = client.post('/api/search/photo', json=payload, headers={'X-Requested-With': 'HeimaMall'})
             self.assertEqual(result.status_code, 200, result.text)
             self.assertTrue(result.json()['items'])

@@ -72,8 +72,13 @@ def parse_keywords(response):
 
 
 class PhotoSearch:
-    def __init__(self, api_key='', base_url='https://api.openai.com/v1', model='gpt-4.1-mini'):
+    def __init__(self, api_key='', base_url='https://api.openai.com/v1', model='gpt-4.1-mini',
+                 visual_search=None):
         self.api_key, self.base_url, self.model = api_key, base_url.rstrip('/'), model
+        if visual_search is None:
+            from app.visual_search import VisualSearch
+            visual_search = VisualSearch.from_environment()
+        self.visual_search = visual_search
         if api_key:
             url = urlsplit(self.base_url)
             if (url.scheme != 'https' or not url.hostname or url.username or url.password
@@ -98,6 +103,8 @@ class PhotoSearch:
             return None
 
     def close(self):
+        if self.visual_search is not None:
+            self.visual_search.close()
         if self.shared_limiter is not None:
             self.shared_limiter.client.close()
             self.shared_limiter = None
@@ -159,8 +166,14 @@ class PhotoSearch:
                    os.getenv('PHOTO_SEARCH_MODEL', 'gpt-4.1-mini').strip())
 
     @property
+    def mode(self):
+        if self.visual_search is not None and self.visual_search.enabled:
+            return 'visual'
+        return 'keywords' if self.api_key else 'disabled'
+
+    @property
     def enabled(self):
-        return bool(self.api_key)
+        return self.mode != 'disabled'
 
     @contextmanager
     def reserve(self, host):
@@ -208,7 +221,7 @@ class PhotoSearch:
             raise MallError(502, '图片识别返回格式异常，请稍后重试') from error
 
     async def recognize(self, encoded, host):
-        if not self.enabled:
+        if not self.api_key:
             raise MallError(503, '照片识别尚未开通，请先使用文字搜索')
         with self.reserve(host):
             if not await asyncio.to_thread(self._shared_reserve, host):
@@ -216,51 +229,101 @@ class PhotoSearch:
             image = await asyncio.to_thread(prepare_image, encoded)
             return await self.request_keywords(image)
 
+    async def prepare_visual_image(self, encoded, host):
+        if self.mode != 'visual':
+            raise MallError(503, '本地图片搜索尚未配置，请先使用文字搜索')
+        with self.reserve(host):
+            if not await asyncio.to_thread(self._shared_reserve, host):
+                raise MallError(429, '识别次数较多，请一分钟后再试')
+            image = await asyncio.to_thread(prepare_image, encoded)
+            return base64.b64decode(image.partition(',')[2], validate=True)
+
 
 async def photo_search_status(request):
-    return {'enabled': request.app.state.photo_search.enabled}
+    service = request.app.state.photo_search
+    return {'enabled': service.enabled, 'mode': service.mode}
 
 
 async def search_photo(payload, request, connection):
     from app.admin import search_pattern
     from app.shops import product_data
     service = request.app.state.photo_search
+    if service.mode == 'visual':
+        image_bytes = await service.prepare_visual_image(
+            payload.data_base64, service.client_host(request))
+        ids = await service.visual_search.search_image(
+            image_bytes, connection, request.app.state.storage,
+            category=payload.category, store_id=payload.store_id)
+        if not ids:
+            return {'mode': 'visual', 'keywords': [], 'items': [], 'total': 0, 'has_more': False}
+        placeholders = ','.join('?' for _ in ids)
+        filters = [
+            'is_active=1', 'stock>0',
+            'store_id IN (SELECT id FROM stores WHERE is_active=1)',
+            f'id IN ({placeholders})',
+        ]
+        arguments = list(ids)
+        if payload.category:
+            filters.append('category=?')
+            arguments.append(payload.category)
+        if payload.store_id is not None:
+            filters.append('store_id=?')
+            arguments.append(payload.store_id)
+        rows = (await connection.execute(
+            'SELECT * FROM products WHERE ' + ' AND '.join(filters), arguments)).fetchall()
+        fresh = {row['id']: row for row in rows}
+        matches = [fresh[product_id] for product_id in ids if product_id in fresh]
+        items = [await product_data(row, connection) for row in matches[:12]]
+        return {'mode': 'visual', 'keywords': [], 'items': items,
+                'total': len(items), 'has_more': len(matches) > 12}
     keywords = await service.recognize(payload.data_base64, service.client_host(request))
     if not keywords:
-        return {'keywords': [], 'items': [], 'total': 0, 'has_more': False}
+        return {'mode': 'keywords', 'keywords': [], 'items': [], 'total': 0, 'has_more': False}
     search = getattr(request.app.state, 'search_engine', None)
-    indexed = await search.read_photo(connection, keywords) if search is not None else None
+    indexed = await search.read_photo(connection, keywords, payload.category, payload.store_id) if search is not None else None
     if indexed is not None:
         ids = indexed['ids']
-        if not ids:
-            return {'keywords': keywords, 'items': [], 'total': 0, 'has_more': False}
-        candidates = ids[:13]
-        overflow = len(ids) > 12
-        placeholders = ','.join('?' for _ in candidates)
-        rows = (await connection.execute(
-            f'SELECT * FROM products WHERE is_active=1 AND store_id IN '
-            f'(SELECT id FROM stores WHERE is_active=1) AND id IN ({placeholders})',
-            tuple(candidates))).fetchall()
-        fresh = {row['id']: row for row in rows if row['is_active']}
-        items = []
-        for item_id in candidates:
-            if item_id not in fresh:
-                continue
+        if ids:
+            candidates = ids[:13]
+            overflow = len(ids) > 12
+            placeholders = ','.join('?' for _ in candidates)
+            rows = (await connection.execute(
+                f'SELECT * FROM products WHERE is_active=1 AND store_id IN '
+                f'(SELECT id FROM stores WHERE is_active=1) AND stock>0 AND id IN ({placeholders})'
+                + (' AND category=?' if payload.category else '')
+                + (' AND store_id=?' if payload.store_id is not None else ''),
+                tuple(candidates) + ((payload.category,) if payload.category else ())
+                + ((payload.store_id,) if payload.store_id is not None else ()))).fetchall()
+            fresh = {row['id']: row for row in rows if row['is_active']}
+            items = []
+            for item_id in candidates:
+                if item_id not in fresh:
+                    continue
+                if len(items) == 12:
+                    overflow = True
+                    break
+                items.append(await product_data(fresh[item_id], connection))
             if len(items) == 12:
-                overflow = True
-                break
-            items.append(await product_data(fresh[item_id], connection))
-        return {'keywords': keywords, 'items': items, 'total': len(items),
-                'has_more': overflow}
+                return {'mode': 'keywords', 'keywords': keywords, 'items': items, 'total': len(items),
+                        'has_more': overflow}
+        # Elasticsearch is an eventually consistent index. Query the live catalog
+        # when it returned no hits or fewer than one page of usable products, so
+        # recently added or updated items are not hidden during index lag.
     clauses, args = [], []
     for keyword in keywords:
         clauses.append("(name LIKE ? ESCAPE '\\' OR subtitle LIKE ? ESCAPE '\\' OR category LIKE ? ESCAPE '\\')")
         args.extend([search_pattern(keyword)] * 3)
-    where = ' WHERE is_active=1 AND store_id IN (SELECT id FROM stores WHERE is_active=1) AND (' + ' OR '.join(clauses) + ')'
+    where = ' WHERE is_active=1 AND stock>0 AND store_id IN (SELECT id FROM stores WHERE is_active=1) AND (' + ' OR '.join(clauses) + ')'
+    if payload.category:
+        where += ' AND category=?'
+        args.append(payload.category)
+    if payload.store_id is not None:
+        where += ' AND store_id=?'
+        args.append(payload.store_id)
     rows = (await connection.execute(
         'SELECT * FROM products' + where + ' ORDER BY sales DESC,id ASC LIMIT 13', args)).fetchall()
     has_more = len(rows) > 12
     items = []
     for row in rows[:12]:
         items.append(await product_data(row, connection))
-    return {'keywords': keywords, 'items': items, 'total': len(items), 'has_more': has_more}
+    return {'mode': 'keywords', 'keywords': keywords, 'items': items, 'total': len(items), 'has_more': has_more}
